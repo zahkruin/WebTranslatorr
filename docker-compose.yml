@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  webtranslatorr:
+    build: .
+    container_name: webtranslatorr
+    ports:
+      - "9811:9811"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - webtranslatorr
+
+networks:
+  webtranslatorr:
+    driver: bridge
