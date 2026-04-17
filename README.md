@@ -6,8 +6,13 @@ Universal Torznab Proxy - Conecta aplicaciones *Arr con fuentes de contenido esp
 
 WebTranslatorr es un proxy que traduce peticiones estándar Torznab/Newznab a scraping de sitios web de contenido en español:
 
-- **Libros**: [Ebookelo](https://ww2.ebookelo.com) (EPUB, MOBI, PDF)
+- **Libros**: [EpubLibre](https://epublibre.bid), [Lectulandia](https://ww3.lectulandia.co), [HolaEbook](https://holaebook.com), [Espaebook](https://espaebook.cc), [Anna's Archive](https://annas-archive.org), [Ebookelo](https://ww2.ebookelo.com) (Extrae EPUB, MOBI, PDF).
 - **Películas/Series**: [MejorTorrent](https://www42.mejortorrent.eu) / [DonTorrent](https://dontorrent.reisen) (.torrent)
+
+### 🔥 Características Destacadas
+- **Bypass Automático Múltiple**: El proxy saltea barreras de redirección base y Cloudflare mediante HTTP y simulaciones usando *cloudscraper*.
+- **Resolución dinámica de Dominios (`DomainResolver`)**: Si una biblioteca pirata bloquea o tira su dominio general, la aplicación rastrea mirrors actualizados en canales de Telegram y chequea el /health para reenganchar al instante.
+- **Zip-Extractor "On-the-Fly"**: Algunas web (ej. HolaEbook) sirven los EPUBs tapados en archivos `.zip`. WebTranslatorr intercepta el ZIP en la RAM del sistema en pleno vuelo, extrae el archivo maestro y se lo sirve directamente y desencriptado a Readarr.
 
 Compatible con: Readarr, Sonarr, Radarr, y cualquier app que soporte Torznab.
 
@@ -66,7 +71,7 @@ WebTranslatorr/
 ├── app/
 │   ├── api/           # Endpoints FastAPI
 │   ├── core/          # Modelos y utilidades
-│   ├── providers/     # Scrapers (Ebookelo, MejorTorrent, DonTorrent)
+│   ├── providers/     # Scrapers: Epublibre, AnnasArchive, HolaEbook, Lectulandia, MejorTorrent, DonTorrent...
 │   ├── routing/       # Smart Router
 │   ├── scraping/      # HTTP client con rate-limiting
 │   └── torznab/       # Generación XML
