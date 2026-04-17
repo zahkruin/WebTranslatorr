@@ -18,7 +18,9 @@ Compatible con: Readarr, Sonarr, Radarr, y cualquier app que soporte Torznab.
 
 ## Instalación
 
-### Docker (Recomendado)
+### Docker Compose (Recomendado)
+
+La imagen oficial de Docker se compila y aloja automáticamente en el Registro de Contenedores de GitHub (`ghcr.io`).
 
 1. **Clonar y Preparar el entorno:**
    ```bash
@@ -37,7 +39,20 @@ Compatible con: Readarr, Sonarr, Radarr, y cualquier app que soporte Torznab.
    docker-compose up -d
    ```
 
-### Manual
+### Docker Run (Sin Compose)
+
+Si no usas `docker-compose`, puedes descargar la imagen pre-compilada directamente y ejecutarla pasándole tus variables o el archivo `.env`:
+
+```bash
+docker run -d \
+  --name webtranslatorr \
+  -p 9811:9811 \
+  --env-file .env \
+  -v ./data:/app/data \
+  ghcr.io/zahkruin/webtranslatorr:latest
+```
+
+### Manual (Python nativo)
 
 ```bash
 cp .env.example .env
