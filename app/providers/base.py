@@ -32,7 +32,10 @@ class BaseProvider(ABC):
     def get_capabilities(self) -> ProviderCapabilities:
         """Declara qué categorías y parámetros soporta este provider."""
         return ProviderCapabilities(
+            provider_id=self.provider_id,
+            display_name=self.display_name,
             supported_categories=self.categories,
+            supported_search_params=["q"],
             supports_movie_search=False,
             supports_tv_search=False,
             supports_book_search=True
