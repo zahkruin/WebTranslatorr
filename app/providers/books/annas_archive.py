@@ -23,11 +23,16 @@ class AnnasArchiveProvider(BaseProvider):
         )
 
     async def search(self, query: str, category: int = None, limit: int = 100, **kwargs) -> List[Dict[str, Any]]:
-        self.logger.info(f"Buscando en Anna's Archive: '{query}'")
+        combined_query = self._combine_query(query, kwargs.get('author'), kwargs.get('title'))
+        query_to_use = self.normalize_query(combined_query)
+        self.logger.info(f"Buscando en Anna's Archive: '{query_to_use}'")
+        if not query_to_use:
+            return []
+            
         results = []
         
         # Optimize search for epub and spanish to reduce noise
-        search_url = f"{self.base_url}/search?q={query}&lang=es&ext=epub"
+        search_url = f"{self.base_url}/search?q={query_to_use}&lang=es&ext=epub"
         
         try:
             # Anna's Archive bloquea casi todo, use_scraper es obligatorio
@@ -60,7 +65,7 @@ class AnnasArchiveProvider(BaseProvider):
                     "title": title,
                     "guid": f"{self.base_url}{href}",
                     "size": 1000000, # Podriamos parsearlo pero requiere extraccion fina
-                    "link": f"{settings.HOST}:{settings.PORT}/api/download?provider={self.id}&id={internal_id}&fmt=epub",
+                    "link": f"{settings.HOST}:{settings.PORT}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
                     "description": f"Libro: {title}",
                     "pubDate": "Wed, 01 Jan 2020 00:00:00 +0000",
                     "categories": [7020]

@@ -24,11 +24,16 @@ class LectulandiaProvider(BaseProvider):
         )
 
     async def search(self, query: str, category: int = None, limit: int = 100, **kwargs) -> List[Dict[str, Any]]:
-        self.logger.info(f"Buscando en Lectulandia: '{query}'")
+        combined_query = self._combine_query(query, kwargs.get('author'), kwargs.get('title'))
+        query_to_use = self.normalize_query(combined_query)
+        self.logger.info(f"Buscando en Lectulandia: '{query_to_use}'")
+        if not query_to_use:
+            return []
+            
         results = []
         
         # Lectulandia usa path dinámico para la búsqueda
-        search_url = f"{self.base_url}/search/{query}"
+        search_url = f"{self.base_url}/search/{query_to_use}"
         
         try:
             resp = await self.http_client.get(search_url, use_scraper=True)
@@ -57,7 +62,7 @@ class LectulandiaProvider(BaseProvider):
                     "title": title,
                     "guid": f"{self.base_url}{href}",
                     "size": 1000000,
-                    "link": f"{settings.HOST}:{settings.PORT}/api/download?provider={self.id}&id={internal_id}&fmt=epub",
+                    "link": f"{settings.HOST}:{settings.PORT}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
                     "description": f"Libro: {title}",
                     "pubDate": "Wed, 01 Jan 2020 00:00:00 +0000",
                     "categories": [7020]

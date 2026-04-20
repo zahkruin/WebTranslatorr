@@ -22,6 +22,7 @@ from app.providers.base import BaseProvider
 from app.core.models import SearchResult, ProviderCapabilities
 from app.core.categories import CategoryMapper
 from app.scraping.http_client import HttpClient
+from config import settings
 
 
 class EbookeloProvider(BaseProvider):
@@ -34,7 +35,8 @@ class EbookeloProvider(BaseProvider):
 
     PREFERRED_FORMAT_ORDER = ["epub", "mobi", "pdf"]
 
-    def __init__(self, http_client: HttpClient, base_url: str = None, domain_resolver=None):
+    def __init__(self, http_client: HttpClient, domain_resolver=None):
+        base_url = settings.EBOOKELO_DOMAIN
         if domain_resolver:
             active_domain = domain_resolver.get_current("ebookelo")
             if active_domain:
@@ -42,9 +44,9 @@ class EbookeloProvider(BaseProvider):
                 
         super().__init__(
             http_client=http_client,
-            provider_provider_id="ebookelo",
-            display_display_name="Ebookelo",
-            base_url=base_url or settings.EBOOKELO_DOMAIN,
+            provider_id="ebookelo",
+            display_name="Ebookelo",
+            base_url=base_url,
             categories=[7000, 7020, 8000, 8010]
         )
 

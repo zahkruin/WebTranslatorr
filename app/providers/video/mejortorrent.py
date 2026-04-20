@@ -99,7 +99,7 @@ class MejorTorrentProvider(BaseProvider):
 
         try:
             response = await self.http_client.get(search_url)
-            results = self._parse_search_results(response.text)
+            results = self._parse_results(response.text)
         except Exception as e:
             self.logger.error(f"Error en búsqueda: {e}")
             return []

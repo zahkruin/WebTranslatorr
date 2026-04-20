@@ -25,11 +25,16 @@ class EpubLibreProvider(BaseProvider):
         )
 
     async def search(self, query: str, category: int = None, limit: int = 100, **kwargs) -> List[Dict[str, Any]]:
-        self.logger.info(f"Buscando en EpubLibre: '{query}'")
+        combined_query = self._combine_query(query, kwargs.get('author'), kwargs.get('title'))
+        query_to_use = self.normalize_query(combined_query)
+        self.logger.info(f"Buscando en EpubLibre: '{query_to_use}'")
+        if not query_to_use:
+            return []
+            
         results = []
         
         # Búsqueda inicial
-        search_url = f"{self.base_url}/?s={query}"
+        search_url = f"{self.base_url}/?s={query_to_use}"
         
         try:
             resp = await self.http_client.get(search_url, use_scraper=True)
@@ -61,7 +66,7 @@ class EpubLibreProvider(BaseProvider):
                     "title": title,
                     "guid": href,
                     "size": 1000000, # 1MB dummy
-                    "link": f"{settings.HOST}:{settings.PORT}/api/download?provider={self.id}&id={internal_id}&fmt=epub",
+                    "link": f"{settings.HOST}:{settings.PORT}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
                     "description": f"Libro: {title}",
                     "pubDate": "Wed, 01 Jan 2020 00:00:00 +0000",
                     "categories": [7020]
