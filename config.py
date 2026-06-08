@@ -1,12 +1,20 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="WTR_",
+    )
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 9811
     API_KEY: str = "changeme"
     LOG_LEVEL: str = "INFO"
+    # External URL visible to *Arr apps (e.g. "http://localhost:9811")
+    # If empty, falls back to "http://HOST:PORT" (but HOST may be 0.0.0.0)
+    EXTERNAL_URL: str = "http://localhost:9811"
 
     # Providers
     EBOOKELO_ENABLED: bool = True
@@ -19,6 +27,13 @@ class Settings(BaseSettings):
     GUTENBERG_ENABLED: bool = True
     MEJORTORRENT_ENABLED: bool = True
     DONTORRENT_ENABLED: bool = False
+    # New providers
+    EPUBFLIX1_ENABLED: bool = True
+    LIBGEN_ENABLED: bool = True
+    BOOOBOOK_ENABLED: bool = True
+    LECTUEPUBLIBRE5_ENABLED: bool = True
+    MUNDOEPUBLIBRE1_ENABLED: bool = True
+    ZLIBRARY_ENABLED: bool = True
 
     # Dominios (actualizables sin redesplegar)
     MEJORTORRENT_DOMAIN: str = "https://www42.mejortorrent.eu"
@@ -31,6 +46,13 @@ class Settings(BaseSettings):
     ELEJANDRIA_DOMAIN: str = "https://www.elejandria.com"
     ANNASARCHIVE_DOMAIN: str = "https://annas-archive.org"
     GUTENBERG_DOMAIN: str = "https://gutenberg.org"
+    # New provider domains
+    EPUBFLIX1_DOMAIN: str = "https://epubflix1.com"
+    LIBGEN_DOMAIN: str = "https://libgen.ee"
+    BOOOBOOK_DOMAIN: str = "https://es.booobook.bond"
+    LECTUEPUBLIBRE5_DOMAIN: str = "https://lectuepublibre5.com"
+    MUNDOEPUBLIBRE1_DOMAIN: str = "https://mundoepublibre1.com"
+    ZLIBRARY_DOMAIN: str = "https://z-library.sk"
 
     # TMDB (para resolver IMDb ID → título español)
     TMDB_API_KEY: str = ""
@@ -50,10 +72,6 @@ class Settings(BaseSettings):
 
     # Proxy (opcional)
     HTTP_PROXY: str = ""
-
-    class Config:
-        env_file = ".env"
-        env_prefix = "WTR_"
 
 
 settings = Settings()

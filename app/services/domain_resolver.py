@@ -102,10 +102,14 @@ class DomainResolver:
         Es síncrono para que los providers lo puedan usar fácilmente.
         """
         if provider_id in self._resolved:
-            return self._resolved[provider_id].url
+            url = self._resolved[provider_id].url
+            logger.debug(f"Domain for {provider_id}: {url} (resolved)")
+            return url
 
         if provider_id in self._configs:
-            return self._configs[provider_id].default_domain
+            url = self._configs[provider_id].default_domain
+            logger.debug(f"Domain for {provider_id}: {url} (default config)")
+            return url
 
         raise ValueError(f"Provider '{provider_id}' not registered for domain resolution")
 

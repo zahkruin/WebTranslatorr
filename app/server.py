@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
         rate_limit_per_second=settings.RATE_LIMIT_PER_SECOND,
         max_retries=settings.MAX_RETRIES,
         timeout=settings.REQUEST_TIMEOUT,
+        proxy=settings.HTTP_PROXY or None,
     )
     app.state.http_client = http_client
 
@@ -54,6 +55,13 @@ async def lifespan(app: FastAPI):
             privtree_path="@dontorrent",
             telegram_channel="DonTorrent",
             known_domain_pattern=r"dontorrent\.(?!blog)\w+",
+        ))
+
+    if settings.EBOOKELO_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="ebookelo",
+            default_domain=settings.EBOOKELO_DOMAIN,
+            known_domain_pattern=r"ebookelo\.\w+",
         ))
 
     if settings.EPUBLIBRE_ENABLED:
@@ -91,6 +99,49 @@ async def lifespan(app: FastAPI):
             provider_id="annasarchive",
             default_domain=settings.ANNASARCHIVE_DOMAIN,
             known_domain_pattern=r"annas-archive\.\w+",
+        ))
+
+    # --- New providers ---
+    if settings.EPUBFLIX1_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="epubflix1",
+            default_domain=settings.EPUBFLIX1_DOMAIN,
+            known_domain_pattern=r"epubflix1\.\w+",
+        ))
+
+    if settings.LIBGEN_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="libgen",
+            default_domain=settings.LIBGEN_DOMAIN,
+            known_domain_pattern=r"libgen\.\w+",
+        ))
+
+    if settings.BOOOBOOK_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="booobook",
+            default_domain=settings.BOOOBOOK_DOMAIN,
+            known_domain_pattern=r"booobook\.\w+",
+        ))
+
+    if settings.LECTUEPUBLIBRE5_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="lectuepublibre5",
+            default_domain=settings.LECTUEPUBLIBRE5_DOMAIN,
+            known_domain_pattern=r"lectuepublibre5\.\w+",
+        ))
+
+    if settings.MUNDOEPUBLIBRE1_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="mundoepublibre1",
+            default_domain=settings.MUNDOEPUBLIBRE1_DOMAIN,
+            known_domain_pattern=r"mundoepublibre1\.\w+",
+        ))
+
+    if settings.ZLIBRARY_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="zlibrary",
+            default_domain=settings.ZLIBRARY_DOMAIN,
+            known_domain_pattern=r"z-library\.\w+|singlelogin\.\w+",
         ))
 
     app.state.domain_resolver = resolver

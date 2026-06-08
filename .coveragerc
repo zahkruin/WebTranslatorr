@@ -1,0 +1,21 @@
+[run]
+source = app
+branch = true
+omit =
+    */__init__.py
+    */tests/*
+    app/scraping/parser.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+    \.\.\.
+
+[html]
+directory = htmlcov

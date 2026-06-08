@@ -1,0 +1,125 @@
+> import re
+> import logging
+> from typing import Optional
+> from datetime import datetime
+  
+> from bs4 import BeautifulSoup
+  
+> from app.providers.base import BaseProvider
+> from app.core.models import SearchResult
+> from config import settings
+  
+  
+> logger = logging.getLogger("provider.annasarchive")
+  
+  
+> class AnnasArchiveProvider(BaseProvider):
+>     def __init__(self, http_client, domain_resolver=None):
+>         domain = settings.ANNASARCHIVE_DOMAIN
+>         if domain_resolver:
+!             active_domain = domain_resolver.get_current("annasarchive")
+!             if active_domain:
+!                 domain = active_domain
+  
+>         super().__init__(
+>             provider_id="annasarchive",
+>             display_name="Anna's Archive",
+>             base_url=domain,
+>             http_client=http_client,
+>             categories=[7000, 7020, 8000, 8010]
+>         )
+  
+>     async def search(
+>         self,
+>         query: str,
+>         categories: list[int] = None,
+>         *,
+>         offset: int = 0,
+>         limit: int = 50,
+>         imdb_id: Optional[str] = None,
+>         tvdb_id: Optional[int] = None,
+>         season: Optional[int] = None,
+>         episode: Optional[int] = None,
+>         author: Optional[str] = None,
+>         title: Optional[str] = None,
+>         **kwargs
+>     ) -> list[SearchResult]:
+>         combined_query = self._combine_query(query, author, title)
+>         query_to_use = self.normalize_query(combined_query)
+>         self.logger.info(f"Buscando en Anna's Archive: '{query_to_use}'")
+>         if not query_to_use:
+>             return []
+  
+>         results = []
+>         search_url = f"{self.base_url}/search?q={query_to_use}&lang=es&ext=epub"
+  
+>         try:
+>             resp = await self.http_client.get(search_url, use_scraper=True)
+>             soup = BeautifulSoup(resp.text, 'lxml')
+  
+>             seen_urls = set()
+>             for a in soup.select('a[href*="/md5/"]'):
+>                 href = a.get('href')
+  
+>                 title_div = a.find('h3') or a.select_one('div.text-xl, div.font-bold')
+>                 if not title_div:
+!                     continue
+  
+>                 title_text = title_div.get_text(strip=True)
+  
+>                 if not href or href in seen_urls:
+>                     continue
+  
+>                 seen_urls.add(href)
+>                 internal_id = href.split('/md5/')[-1]
+  
+>                 result = SearchResult(
+>                     title=title_text,
+>                     guid=f"annasarchive-{internal_id}",
+>                     link=f"{self.base_url}{href}",
+>                     download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+>                     size_bytes=1000000,
+>                     pub_date=datetime.now(),
+>                     categories=[7020],
+>                     description=f"Libro: {title_text}",
+>                 )
+>                 results.append(result)
+  
+>                 if len(results) >= limit:
+!                     break
+  
+>         except Exception as e:
+>             self.logger.error(f"Error parseando Anna's Archive: {e}")
+  
+>         return results[offset:]
+  
+>     async def get_download_url(self, internal_id: str, **kwargs) -> str | None:
+>         detail_url = f"{self.base_url}/md5/{internal_id}"
+  
+>         try:
+>             resp = await self.http_client.get(detail_url, use_scraper=True)
+>             soup = BeautifulSoup(resp.text, 'lxml')
+  
+              # Preferred: "Slow Partner Server" links
+>             for a in soup.select('a.js-download-link'):
+>                 text = a.get_text(strip=True).lower()
+>                 href = a.get('href', '')
+  
+>                 if 'slow partner server' in text or 'slow' in text or 'libgen' in text:
+>                     if href.startswith('/'):
+>                         return f"{self.base_url}{href}"
+!                     return href
+  
+              # Fallback: any /download/ or libgen.li link
+>             for a in soup.find_all('a', href=True):
+>                 if '/download/' in a['href'] or 'libgen.li' in a['href']:
+>                     href = a['href']
+>                     if href.startswith('/'):
+>                         return f"{self.base_url}{href}"
+!                     return href
+  
+>             self.logger.warning(f"No se encontró enlace de descarga para {internal_id}")
+>         except Exception as e:
+>             self.logger.error(f"Error obteniendo download url de {internal_id}: {e}")
+  
+>         return None

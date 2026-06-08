@@ -59,6 +59,11 @@ class EbookeloProvider(BaseProvider):
             supports_book_search=True,
         )
 
+    # Enrichment limits: only enrich top N results to reduce latency
+    MAX_ENRICH = 25
+    # Max concurrent detail page fetches
+    ENRICH_CONCURRENCY = 3
+
     async def search(
         self,
         query: str,
@@ -89,25 +94,44 @@ class EbookeloProvider(BaseProvider):
             self.logger.error(f"Error en búsqueda: {e}")
             return []
 
-        # Enriquecer los top-N resultados con detalle
+        # ── Enrichment (capped at MAX_ENRICH to limit latency) ──
+        enrich_count = min(len(results), self.MAX_ENRICH)
         enriched = []
-        for result in results[:limit]:
-            try:
-                detail = await self._parse_book_detail(result.link)
-                if detail.get("author"):
-                    result.author = detail["author"]
-                if detail.get("formats"):
-                    # Elegir mejor formato disponible
-                    fmt = self._select_best_format(detail["formats"])
-                    result.download_url = f"/api/download?provider=ebookelo&id={result.guid.split('-')[1]}&fmt={fmt}"
-                    result.extra_attrs["format"] = fmt
-                if detail.get("genre"):
-                    result.extra_attrs["genre"] = detail["genre"]
-            except Exception as e:
-                self.logger.warning(f"Error enriqueciendo {result.guid}: {e}")
-            enriched.append(result)
 
-        # Aplicar offset
+        # Process first enrich_count results with limited concurrency
+        import asyncio
+        semaphore = asyncio.Semaphore(self.ENRICH_CONCURRENCY)
+
+        async def enrich_one(result):
+            async with semaphore:
+                try:
+                    detail = await self._parse_book_detail(result.link)
+                    if detail.get("author"):
+                        result.author = detail["author"]
+                    if detail.get("formats"):
+                        fmt = self._select_best_format(detail["formats"])
+                        book_id = result.guid.split('-')[1]
+                        result.download_url = (
+                            f"/api/download?provider=ebookelo&id={book_id}&fmt={fmt}"
+                        )
+                        result.extra_attrs["format"] = fmt
+                    if detail.get("genre"):
+                        result.extra_attrs["genre"] = detail["genre"]
+                    if detail.get("language"):
+                        result.extra_attrs["language"] = detail["language"]
+                except Exception as e:
+                    self.logger.warning(f"Error enriqueciendo {result.guid}: {e}")
+                return result
+
+        # Enrich in parallel with concurrency control
+        tasks = [enrich_one(r) for r in results[:enrich_count]]
+        enriched_results = await asyncio.gather(*tasks)
+
+        enriched.extend(enriched_results)
+        # Non-enriched results (beyond MAX_ENRICH) go as-is
+        enriched.extend(results[enrich_count:])
+
+        # Apply offset
         if offset:
             enriched = enriched[offset:]
 

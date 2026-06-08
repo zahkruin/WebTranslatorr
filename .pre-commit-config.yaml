@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: pytest-cov
+        name: Run tests with coverage (≥90%)
+        entry: pytest --cov=app --cov-fail-under=90 -x -m "not integration" -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]

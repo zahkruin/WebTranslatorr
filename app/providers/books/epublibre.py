@@ -1,21 +1,26 @@
 import re
-import math
-from typing import Dict, Any, List
+import logging
+from typing import Optional
+from datetime import datetime
+
 from bs4 import BeautifulSoup
 
 from app.providers.base import BaseProvider
+from app.core.models import SearchResult
 from config import settings
+
+
+logger = logging.getLogger("provider.epublibre")
 
 
 class EpubLibreProvider(BaseProvider):
     def __init__(self, http_client, domain_resolver=None):
         domain = settings.EPUBLIBRE_DOMAIN
         if domain_resolver:
-            # We don't have epublibre auto-resolution logic yet, but we will wire it up
             active_domain = domain_resolver.get_current("epublibre")
             if active_domain:
                 domain = active_domain
-                
+
         super().__init__(
             provider_id="epublibre",
             display_name="EpubLibre",
@@ -24,85 +29,88 @@ class EpubLibreProvider(BaseProvider):
             categories=[7000, 7020, 8000, 8010]
         )
 
-    async def search(self, query: str, category: int = None, limit: int = 100, **kwargs) -> List[Dict[str, Any]]:
-        combined_query = self._combine_query(query, kwargs.get('author'), kwargs.get('title'))
+    async def search(
+        self,
+        query: str,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        imdb_id: Optional[str] = None,
+        tvdb_id: Optional[int] = None,
+        season: Optional[int] = None,
+        episode: Optional[int] = None,
+        author: Optional[str] = None,
+        title: Optional[str] = None,
+        **kwargs
+    ) -> list[SearchResult]:
+        combined_query = self._combine_query(query, author, title)
         query_to_use = self.normalize_query(combined_query)
         self.logger.info(f"Buscando en EpubLibre: '{query_to_use}'")
         if not query_to_use:
             return []
-            
+
         results = []
-        
-        # Búsqueda inicial
         search_url = f"{self.base_url}/?s={query_to_use}"
-        
+
         try:
             resp = await self.http_client.get(search_url, use_scraper=True)
             soup = BeautifulSoup(resp.text, 'lxml')
-            
-            # En EpubLibre, las cards de resultados suelen ser "div.post" o links que contienen "/book/"
+
             seen_urls = set()
-            
-            # Recolectamos los enlaces que apunten a /book/ excepto el genérico "Biblioteca"
             for a in soup.select('a[href*="/book/"]'):
                 href = a.get('href')
-                title = a.get_text(strip=True)
-                
-                if not href or not title or title.lower() == 'biblioteca' or href in seen_urls:
+                title_text = a.get_text(strip=True)
+
+                if not href or not title_text or title_text.lower() == 'biblioteca' or href in seen_urls:
                     continue
-                    
+
                 seen_urls.add(href)
-                
-                # Vamos a coger el title que haya. A veces hay un h2 o h3 dentro.
-                # Generamos un slug interno basado en la URL
                 match = re.search(r'/book/([^/]+)/', href)
                 internal_id = match.group(1) if match else None
-                
+
                 if not internal_id:
                     continue
 
-                item = {
-                    "id": internal_id,
-                    "title": title,
-                    "guid": href,
-                    "size": 1000000, # 1MB dummy
-                    "link": f"{settings.HOST}:{settings.PORT}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
-                    "description": f"Libro: {title}",
-                    "pubDate": "Wed, 01 Jan 2020 00:00:00 +0000",
-                    "categories": [7020]
-                }
-                
-                results.append(item)
-                
+                result = SearchResult(
+                    title=title_text,
+                    guid=f"epublibre-{internal_id}",
+                    link=href if href.startswith('http') else f"{self.base_url}{href}",
+                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+                    size_bytes=1000000,
+                    pub_date=datetime.now(),
+                    categories=[7020],
+                    description=f"Libro: {title_text}",
+                )
+                results.append(result)
+
                 if len(results) >= limit:
                     break
 
         except Exception as e:
             self.logger.error(f"Error parseando EpubLibre: {e}")
-            
-        return results
+
+        return results[offset:]
 
     async def get_download_url(self, internal_id: str, **kwargs) -> str | None:
-        """
-        Navega a la página del libro y extrae el enlace de descarga para 'epub'.
-        """
         fmt = kwargs.get('fmt', 'epub').lower()
         detail_url = f"{self.base_url}/book/{internal_id}/"
-        
+
         try:
             resp = await self.http_client.get(detail_url, use_scraper=True)
             soup = BeautifulSoup(resp.text, 'lxml')
-            
-            # Buscar el botón de bajar, p.ej: "BAJAR EN EPUB" o similar
+
             target_text = f"EN {fmt.upper()}"
             for a in soup.find_all('a', href=True):
                 text = a.get_text(strip=True).upper()
                 if target_text in text or 'DESCARGAR' in text:
-                    # found download link!
-                    return a['href']
-            
+                    href = a['href']
+                    if href.startswith('/'):
+                        return f"{self.base_url}{href}"
+                    return href
+
             self.logger.warning(f"No se encontró enlace de descarga para {internal_id} en {fmt}")
         except Exception as e:
             self.logger.error(f"Error obteniendo download url de {internal_id}: {e}")
-            
+
         return None

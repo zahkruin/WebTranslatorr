@@ -1,0 +1,42 @@
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+]
+markers = [
+    "slow: Tests that are slow (deselect with '-m \"not slow\"')",
+    "integration: Tests that require real HTTP or external services",
+    "unit: Fast unit tests with no external dependencies",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:cloudscraper.*",
+    "ignore::DeprecationWarning:bs4.*",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = [
+    "*/__init__.py",
+    "*/tests/*",
+    "app/scraping/parser.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]

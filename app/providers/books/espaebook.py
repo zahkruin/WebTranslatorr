@@ -1,9 +1,16 @@
 import re
-from typing import Dict, Any, List
+import logging
+from typing import Optional
+from datetime import datetime
+
 from bs4 import BeautifulSoup
 
 from app.providers.base import BaseProvider
+from app.core.models import SearchResult
 from config import settings
+
+
+logger = logging.getLogger("provider.espaebook")
 
 
 class EspaebookProvider(BaseProvider):
@@ -13,7 +20,7 @@ class EspaebookProvider(BaseProvider):
             active_domain = domain_resolver.get_current("espaebook")
             if active_domain:
                 domain = active_domain
-                
+
         super().__init__(
             provider_id="espaebook",
             display_name="Espaebook",
@@ -22,90 +29,92 @@ class EspaebookProvider(BaseProvider):
             categories=[7000, 7020, 8000, 8010]
         )
 
-    async def search(self, query: str, category: int = None, limit: int = 100, **kwargs) -> List[Dict[str, Any]]:
-        combined_query = self._combine_query(query, kwargs.get('author'), kwargs.get('title'))
+    async def search(
+        self,
+        query: str,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        imdb_id: Optional[str] = None,
+        tvdb_id: Optional[int] = None,
+        season: Optional[int] = None,
+        episode: Optional[int] = None,
+        author: Optional[str] = None,
+        title: Optional[str] = None,
+        **kwargs
+    ) -> list[SearchResult]:
+        combined_query = self._combine_query(query, author, title)
         query_to_use = self.normalize_query(combined_query)
         self.logger.info(f"Buscando en Espaebook: '{query_to_use}'")
         if not query_to_use:
             return []
-            
+
         results = []
-        
-        # Búsqueda GET as in most wp sites
         search_url = f"{self.base_url}/?s={query_to_use}"
-        
+
         try:
             resp = await self.http_client.get(search_url, use_scraper=True)
             soup = BeautifulSoup(resp.text, 'lxml')
-            
+
             seen_urls = set()
-            
-            # Similar to epublibre, look for /book/ or /libro/
             for a in soup.select('a[href*="/libro/"], a[href*="/book/"], h2.entry-title a'):
                 href = a.get('href')
-                title = a.get_text(strip=True)
-                
-                if not href or not title or href in seen_urls:
+                title_text = a.get_text(strip=True)
+
+                if not href or not title_text or href in seen_urls:
                     continue
-                    
+
                 seen_urls.add(href)
-                
-                # Extraer un slug válido
                 match = re.search(r'/(?:libro|book)/([^/]+)/?', href)
                 internal_id = match.group(1) if match else None
-                
+
                 if not internal_id:
-                    # Alternativa: coger lo ultimo de la url
                     internal_id = [x for x in href.split('/') if x][-1]
 
-                item = {
-                    "id": internal_id,
-                    "title": title,
-                    "guid": href if href.startswith('http') else f"{self.base_url}{href}",
-                    "size": 1000000,
-                    "link": f"{settings.HOST}:{settings.PORT}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
-                    "description": f"Libro: {title}",
-                    "pubDate": "Wed, 01 Jan 2020 00:00:00 +0000",
-                    "categories": [7020]
-                }
-                
-                results.append(item)
-                
+                result = SearchResult(
+                    title=title_text,
+                    guid=f"espaebook-{internal_id}",
+                    link=href if href.startswith('http') else f"{self.base_url}{href}",
+                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+                    size_bytes=1000000,
+                    pub_date=datetime.now(),
+                    categories=[7020],
+                    description=f"Libro: {title_text}",
+                )
+                results.append(result)
+
                 if len(results) >= limit:
                     break
 
         except Exception as e:
             self.logger.error(f"Error parseando Espaebook: {e}")
-            
-        return results
+
+        return results[offset:]
 
     async def get_download_url(self, internal_id: str, **kwargs) -> str | None:
-        """
-        Espaebook tiene una web para descargar que requiere otro click, igual que Epublibre.
-        """
-        detail_url = f"{self.base_url}/libro/{internal_id}/" # o book
-        
+        detail_url = f"{self.base_url}/libro/{internal_id}/"
+
         try:
             resp = await self.http_client.get(detail_url, use_scraper=True)
-            
+
             if resp.status_code == 404:
-                # Try fallback
                 detail_url = f"{self.base_url}/book/{internal_id}/"
                 resp = await self.http_client.get(detail_url, use_scraper=True)
-                
+
             soup = BeautifulSoup(resp.text, 'lxml')
-            
+
             for a in soup.find_all('a', href=True):
                 text = a.get_text(strip=True).upper()
-                # Botones típicos: "DESCARGAR EPUB"
                 if 'EPUB' in text or 'DESCARGAR' in text:
-                    # Ignorar enlaces a generos o al mismo book
-                    if '/genre/' not in a['href'] and '/autor/' not in a['href'] and '/book/' not in a['href']:
-                        # Devuelve el link
-                        return a['href']
-            
+                    href = a['href']
+                    if '/genre/' not in href and '/autor/' not in href and '/book/' not in href:
+                        if href.startswith('/'):
+                            return f"{self.base_url}{href}"
+                        return href
+
             self.logger.warning(f"No se encontró enlace de descarga para {internal_id}")
         except Exception as e:
             self.logger.error(f"Error obteniendo download url de {internal_id}: {e}")
-            
+
         return None

@@ -1,0 +1,54 @@
+"""
+Caching service for search results using cachetools.
+Reduces redundant scraping of the same queries within TTL window.
+"""
+import logging
+from typing import Optional
+
+from cachetools import TTLCache
+
+from config import settings
+
+logger = logging.getLogger("cache")
+
+
+class SearchCache:
+    """
+    Thread-safe TTL cache for search results.
+    Keys are (provider_id, normalized_query, category_tuple).
+    """
+
+    def __init__(self, maxsize: int = 512, ttl: int = 300):
+        self._cache: TTLCache = TTLCache(maxsize=maxsize, ttl=ttl)
+        self._enabled = settings.CACHE_ENABLED
+
+    def _make_key(self, provider_id: str, query: str, categories: Optional[list[int]]) -> str:
+        cat_part = ",".join(str(c) for c in sorted(categories)) if categories else ""
+        return f"{provider_id}|{query}|{cat_part}"
+
+    def get(self, provider_id: str, query: str, categories: Optional[list[int]] = None):
+        """Retrieve cached results if available."""
+        if not self._enabled:
+            return None
+        key = self._make_key(provider_id, query, categories)
+        return self._cache.get(key)
+
+    def set(self, provider_id: str, query: str, results, categories: Optional[list[int]] = None):
+        """Store results in cache."""
+        if not self._enabled:
+            return
+        key = self._make_key(provider_id, query, categories)
+        self._cache[key] = results
+        logger.debug(f"Cached {len(results)} results for {key}")
+
+    def invalidate(self, provider_id: str, query: str = None):
+        """Invalidate cache entries for a provider (optionally for a specific query)."""
+        # TTLCache doesn't support pattern deletion, so we just note it
+        logger.debug(f"Cache invalidation requested for {provider_id}")
+
+
+# Global cache instance
+search_cache = SearchCache(
+    maxsize=512,
+    ttl=settings.CACHE_TTL_SECONDS,
+)

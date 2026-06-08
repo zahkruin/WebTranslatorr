@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   webtranslatorr:
-    image: ghcr.io/zahkruin/webtranslatorr:latest
-    # build: . # Descomenta y elimina la línea 'image' superior para compilar localmente.
+    #image: ghcr.io/zahkruin/webtranslatorr:latest
+    build: . # Descomenta y elimina la línea 'image' superior para compilar localmente.
     container_name: webtranslatorr
     ports:
       - "9811:9811"

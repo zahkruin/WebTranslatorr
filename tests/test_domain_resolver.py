@@ -497,3 +497,143 @@ class TestDomainPersistence:
         assert "dontorrent" in status
         assert status["mejortorrent"]["url"] == "https://www42.mejortorrent.eu"
         assert status["dontorrent"]["url"] == "https://dontorrent.reisen"
+
+    def test_get_current_from_configs(self, mock_http_client, mejortorrent_config, tmp_persistence):
+        """Test get_current returns from configs when not in resolved (lines 109-112)."""
+        resolver = DomainResolver(
+            http_client=mock_http_client,
+            persistence_path=tmp_persistence,
+        )
+        resolver.register_provider(mejortorrent_config)
+        # Remove from _resolved to force config lookup
+        resolver._resolved.clear()
+        assert resolver.get_current("mejortorrent") == "https://www42.mejortorrent.eu"
+
+    def test_get_status_with_provider_id(self, mock_http_client, mejortorrent_config, tmp_persistence):
+        """Test get_status with specific provider_id (lines 119-121)."""
+        resolver = DomainResolver(
+            http_client=mock_http_client,
+            persistence_path=tmp_persistence,
+        )
+        resolver.register_provider(mejortorrent_config)
+        status = resolver.get_status("mejortorrent")
+        assert "mejortorrent" in status
+
+    def test_get_status_with_unknown_provider(self, mock_http_client, tmp_persistence):
+        """Test get_status returns None for unknown provider (line 121)."""
+        resolver = DomainResolver(
+            http_client=mock_http_client,
+            persistence_path=tmp_persistence,
+        )
+        status = resolver.get_status("unknown")
+        assert status["unknown"] is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_unregistered_provider(self, mock_http_client, tmp_persistence):
+        """Test resolve raises error for unregistered provider (line 135)."""
+        resolver = DomainResolver(
+            http_client=mock_http_client,
+            persistence_path=tmp_persistence,
+        )
+        with pytest.raises(ValueError, match="not registered"):
+            await resolver.resolve("unknown")
+
+    @pytest.mark.asyncio
+    async def test_resolve_all(self, mock_http_client, mejortorrent_config, dontorrent_config, tmp_persistence):
+        """Test resolve_all resolves all registered providers (lines 198-206)."""
+        strategy = AsyncMock()
+        strategy.name = "healthcheck"
+        strategy.resolve.return_value = "https://www42.mejortorrent.eu"
+
+        resolver = DomainResolver(
+            http_client=mock_http_client,
+            strategies=[strategy],
+            persistence_path=tmp_persistence,
+        )
+        resolver.register_provider(mejortorrent_config)
+        resolver.register_provider(dontorrent_config)
+
+        results = await resolver.resolve_all()
+        assert "mejortorrent" in results
+        assert "dontorrent" in results
+
+    @pytest.mark.asyncio
+    async def test_health_check(self, mock_http_client, mejortorrent_config, tmp_persistence):
+        """Test health_check validates a provider's domain (lines 210-225)."""
+        strategy = AsyncMock()
+        strategy.name = "healthcheck"
+        strategy.resolve.return_value = "https://www42.mejortorrent.eu"
+
+        resolver = DomainResolver(
+            http_client=mock_http_client,
+            strategies=[strategy],
+            persistence_path=tmp_persistence,
+        )
+        resolver.register_provider(mejortorrent_config)
+        await resolver.resolve("mejortorrent")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_http_client.head.return_value = mock_response
+
+        is_healthy = await resolver.health_check("mejortorrent")
+        assert is_healthy is True
+
+    @pytest.mark.asyncio
+    async def test_health_check_failed(self, mock_http_client, mejortorrent_config, tmp_persistence):
+        """Test health_check returns False when domain is down (lines 220-225)."""
+        resolver = DomainResolver(
+            http_client=mock_http_client,
+            persistence_path=tmp_persistence,
+        )
+        resolver.register_provider(mejortorrent_config)
+
+        mock_http_client.head.side_effect = Exception("Connection refused")
+
+        is_healthy = await resolver.health_check("mejortorrent")
+        assert is_healthy is False
+
+    @pytest.mark.asyncio
+    async def test_notify_change_callback_error(self, mock_http_client, mejortorrent_config, tmp_persistence):
+        """Test that callback errors are caught (lines 245-246)."""
+        strategy = AsyncMock()
+        strategy.name = "healthcheck"
+        strategy.resolve.return_value = "https://www43.mejortorrent.eu"
+
+        resolver = DomainResolver(
+            http_client=mock_http_client,
+            strategies=[strategy],
+            persistence_path=tmp_persistence,
+        )
+        resolver.register_provider(mejortorrent_config)
+
+        bad_callback = AsyncMock(side_effect=Exception("Callback failed"))
+        resolver.on_domain_change(bad_callback)
+
+        # Should not raise despite callback error
+        result = await resolver.resolve("mejortorrent")
+        assert result == "https://www43.mejortorrent.eu"
+        bad_callback.assert_called_once()
+
+    def test_persist_error_handled(self, mock_http_client, mejortorrent_config, tmp_persistence):
+        """Test that _persist handles errors gracefully (lines 260-261)."""
+        resolver = DomainResolver(
+            http_client=mock_http_client,
+            persistence_path="/nonexistent/dir/domains.json",
+        )
+        resolver.register_provider(mejortorrent_config)
+        # Should not raise
+        resolver._persist()
+
+    def test_load_persisted_error(self, mock_http_client, tmp_persistence):
+        """Test _load_persisted handles corrupt JSON (lines 281-282)."""
+        path = Path(tmp_persistence)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("invalid json content")
+
+        resolver = DomainResolver(
+            http_client=mock_http_client,
+            persistence_path=tmp_persistence,
+        )
+        # Should not raise
+        assert resolver._resolved == {}

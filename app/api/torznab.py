@@ -1,9 +1,14 @@
 """
 Endpoint principal Torznab.
-Compatible con el estándar Newznab/Torznab para *Arr apps.
+Compatibile con el estándar Newznab/Torznab para *Arr apps.
 
 URL que se configura en Sonarr/Radarr/Readarr:
   http://localhost:9117/api?apikey=tu_api_key
+
+Para usar providers individuales (multi-indexer):
+  http://localhost:9117/api/epublibre?apikey=tu_api_key
+  http://localhost:9117/api/lectulandia?apikey=tu_api_key
+  ...
 
 Parámetros que los *Arr envían:
   - t: tipo de función (caps, search, tvsearch, movie, book)
@@ -30,6 +35,13 @@ from app.providers.books.holaebook import HolaEbookProvider
 from app.providers.books.annas_archive import AnnasArchiveProvider
 from app.providers.video.mejortorrent import MejorTorrentProvider
 from app.providers.video.dontorrent import DonTorrentProvider
+# New providers
+from app.providers.books.epubflix1 import Epubflix1Provider
+from app.providers.books.libgen import LibgenProvider
+from app.providers.books.booobook import BooobookProvider
+from app.providers.books.lectuepublibre5 import LectuEpubLibre5Provider
+from app.providers.books.mundoepublibre1 import MundoEpubLibre1Provider
+from app.providers.books.zlibrary import ZLibraryProvider
 from app.routing.smart_router import smart_router
 from app.utils.zip_extractor import ZipExtractor
 from app.torznab.mapper import TorznabMapper
@@ -37,6 +49,7 @@ from app.torznab.caps import CapsGenerator
 from app.torznab.errors import TorznabErrors
 from app.scraping.http_client import HttpClient
 from app.core.categories import CategoryMapper
+from app.services.cache import search_cache
 
 router = APIRouter()
 
@@ -51,6 +64,7 @@ def _get_http_client():
             rate_limit_per_second=settings.RATE_LIMIT_PER_SECOND,
             max_retries=settings.MAX_RETRIES,
             timeout=settings.REQUEST_TIMEOUT,
+            proxy=settings.HTTP_PROXY or None,
         )
     return _http_client
 
@@ -86,6 +100,31 @@ def _init_providers(resolver=None):
     if settings.DONTORRENT_ENABLED:
         registry.register(DonTorrentProvider(http_client, resolver))
 
+    # --- New providers ---
+    if settings.EPUBFLIX1_ENABLED:
+        registry.register(Epubflix1Provider(http_client, resolver))
+
+    if settings.LIBGEN_ENABLED:
+        registry.register(LibgenProvider(http_client, resolver))
+
+    if settings.BOOOBOOK_ENABLED:
+        registry.register(BooobookProvider(http_client, resolver))
+
+    if settings.LECTUEPUBLIBRE5_ENABLED:
+        registry.register(LectuEpubLibre5Provider(http_client, resolver))
+
+    if settings.MUNDOEPUBLIBRE1_ENABLED:
+        registry.register(MundoEpubLibre1Provider(http_client, resolver))
+
+    if settings.ZLIBRARY_ENABLED:
+        registry.register(ZLibraryProvider(http_client, resolver))
+
+    # Providers configurados pero no implementados aún
+    if settings.ELEJANDRIA_ENABLED:
+        logging.warning("Elejandria provider is configured as enabled but not yet implemented")
+    if settings.GUTENBERG_ENABLED:
+        logging.warning("Gutenberg provider is configured as enabled but not yet implemented")
+
 
 def _validate_apikey(apikey: str) -> bool:
     """Valida la API key."""
@@ -97,6 +136,95 @@ def _parse_cats(cat_str: str) -> list[int]:
     if not cat_str:
         return []
     return [int(c) for c in cat_str.split(",") if c.isdigit()]
+
+
+async def _handle_torznab_request(
+    providers: list,
+    params: dict,
+    q: str = "",
+    cat: str = "",
+    offset: int = 0,
+    limit: int = 50,
+    imdbid: str = "",
+    tvdbid: str = "",
+    season: str = "",
+    ep: str = "",
+    author: str = "",
+    title: str = "",
+) -> Response:
+    """
+    Núcleo compartido de la lógica Torznab.
+    Busca en la lista de providers dada y devuelve el XML de respuesta.
+
+    Usado por:
+      - /api   (todos los providers)
+      - /api/{provider_id}  (un solo provider)
+    """
+    # Ejecutar búsqueda en todos los providers seleccionados en paralelo
+    # con un timeout global para evitar que un provider lento bloquee todo
+    SEARCH_TIMEOUT_SECONDS = 45
+    parsed_cats = _parse_cats(cat)
+
+    async def search_with_cache(provider, **kw):
+        """Busca con cache intermedio y timeout."""
+        # Intentar cache primero
+        cached = search_cache.get(provider.provider_id, q, parsed_cats)
+        if cached is not None:
+            logging.debug(f"Cache hit for {provider.provider_id} / '{q}'")
+            return cached
+
+        try:
+            results = await asyncio.wait_for(
+                provider.search(**kw),
+                timeout=SEARCH_TIMEOUT_SECONDS,
+            )
+            # Guardar en cache
+            if isinstance(results, list):
+                search_cache.set(provider.provider_id, q, results, parsed_cats)
+            return results
+        except asyncio.TimeoutError:
+            logging.warning(f"Provider {provider.provider_id} timed out after {SEARCH_TIMEOUT_SECONDS}s")
+            return []
+        except Exception as e:
+            logging.error(f"Provider {provider.provider_id} error: {e}")
+            return []
+
+    tasks = [
+        search_with_cache(
+            provider,
+            query=q,
+            categories=parsed_cats,
+            offset=offset,
+            limit=limit,
+            imdb_id=imdbid or None,
+            tvdb_id=int(tvdbid) if tvdbid and tvdbid.isdigit() else None,
+            season=int(season) if season and season.isdigit() else None,
+            episode=int(ep) if ep and ep.isdigit() else None,
+            author=author or None,
+            title=title or None,
+        )
+        for provider in providers
+    ]
+
+    results_lists = await asyncio.gather(*tasks)
+
+    # Merge de resultados
+    all_results = []
+    for result_list in results_lists:
+        if isinstance(result_list, list):
+            all_results.extend(result_list)
+
+    # Aplicar paginación
+    total = len(all_results)
+    paginated = all_results[offset:offset + limit]
+
+    xml = TorznabMapper.results_to_xml(paginated, offset, total)
+    return Response(content=xml, media_type="application/xml")
+
+
+# ---------------------------------------------------------------------------
+# Rutas
+# ---------------------------------------------------------------------------
 
 
 @router.get("/api")
@@ -115,6 +243,12 @@ async def torznab_api(
     author: str = Query("", description="Autor (book-search)"),
     title: str = Query("", description="Título (book-search)"),
 ):
+    """
+    Endpoint Torznab principal.
+    Busca en TODOS los providers registrados (comportamiento original).
+
+    También responde a t=caps con las capabilities agregadas de todos los providers.
+    """
     # Validar API key
     if not _validate_apikey(apikey):
         return Response(
@@ -122,7 +256,7 @@ async def torznab_api(
             media_type="application/xml"
         )
 
-    # t=caps → devolver capabilities
+    # t=caps → devolver capabilities agregadas de todos los providers
     if t and t.lower() == "caps":
         capabilities = [p.get_capabilities() for p in registry.get_all()]
         xml = CapsGenerator.generate(capabilities)
@@ -138,39 +272,20 @@ async def torznab_api(
             media_type="application/xml"
         )
 
-    # Ejecutar búsqueda en todos los providers seleccionados en paralelo
-    tasks = [
-        provider.search(
-            query=q,
-            categories=_parse_cats(cat),
-            offset=offset,
-            limit=limit,
-            imdb_id=imdbid or None,
-            tvdb_id=int(tvdbid) if tvdbid and tvdbid.isdigit() else None,
-            season=int(season) if season and season.isdigit() else None,
-            episode=int(ep) if ep and ep.isdigit() else None,
-            author=author or None,
-            title=title or None,
-        )
-        for provider in providers
-    ]
-
-    results_lists = await asyncio.gather(*tasks, return_exceptions=True)
-
-    # Merge de resultados, ignorando errores
-    all_results = []
-    for result in results_lists:
-        if isinstance(result, list):
-            all_results.extend(result)
-        elif isinstance(result, Exception):
-            logging.error(f"Provider error: {result}")
-
-    # Aplicar paginación
-    total = len(all_results)
-    paginated = all_results[offset:offset + limit]
-
-    xml = TorznabMapper.results_to_xml(paginated, offset, total)
-    return Response(content=xml, media_type="application/xml")
+    return await _handle_torznab_request(
+        providers=providers,
+        params=params,
+        q=q,
+        cat=cat,
+        offset=offset,
+        limit=limit,
+        imdbid=imdbid,
+        tvdbid=tvdbid,
+        season=season,
+        ep=ep,
+        author=author,
+        title=title,
+    )
 
 
 @router.get("/api/download")
@@ -225,3 +340,73 @@ async def download_proxy(
             content=TorznabErrors.server_error(str(e)),
             media_type="application/xml"
         )
+
+
+@router.get("/api/{provider_id}")
+async def provider_torznab_api(
+    provider_id: str,
+    request: Request,
+    t: str = Query("", description="Función: caps|search|tvsearch|movie|book"),
+    q: str = Query("", description="Query de búsqueda"),
+    cat: str = Query("", description="Categorías (comma-separated)"),
+    apikey: str = Query("", description="API Key"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    imdbid: str = Query("", description="IMDb ID (ej: tt1234567)"),
+    tvdbid: str = Query("", description="TVDB ID"),
+    season: str = Query("", description="Número de temporada"),
+    ep: str = Query("", description="Número de episodio"),
+    author: str = Query("", description="Autor (book-search)"),
+    title: str = Query("", description="Título (book-search)"),
+):
+    """
+    Endpoint Torznab para un UNICO provider.
+    Permite configurar indexers individuales en Readarr/Radarr/Sonarr.
+
+    Ejemplo de URL en Readarr:
+      http://webtranslatorr:9811/api/epublibre?apikey=xxx
+      http://webtranslatorr:9811/api/lectulandia?apikey=xxx
+      http://webtranslatorr:9811/api/libgen?apikey=xxx
+    """
+    # Validar API key
+    if not _validate_apikey(apikey):
+        return Response(
+            content=TorznabErrors.incorrect_api_key(),
+            media_type="application/xml"
+        )
+
+    # Obtener el provider específico
+    provider_id_lower = provider_id.lower()
+
+    try:
+        provider = registry.get(provider_id_lower)
+    except Exception:
+        return Response(
+            content=TorznabErrors.server_error(f"Provider '{provider_id}' not found"),
+            media_type="application/xml"
+        )
+
+    # t=caps → devolver capabilities de este provider individual
+    if t and t.lower() == "caps":
+        capabilities = [provider.get_capabilities()]
+        xml = CapsGenerator.generate(capabilities)
+        return Response(content=xml, media_type="application/xml")
+
+    params = dict(request.query_params)
+
+    return await _handle_torznab_request(
+        providers=[provider],
+        params=params,
+        q=q,
+        cat=cat,
+        offset=offset,
+        limit=limit,
+        imdbid=imdbid,
+        tvdbid=tvdbid,
+        season=season,
+        ep=ep,
+        author=author,
+        title=title,
+    )
+
+

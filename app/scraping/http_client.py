@@ -4,13 +4,41 @@ Cliente HTTP con:
 - Rate limiting por dominio
 - Reintentos automáticos con backoff exponencial
 - Gestión de cookies/sesión
+- Soporte de proxy HTTP
+- Cloudscraper wrapper estandarizado a interfaz httpx
 """
 import asyncio
 import httpx
 from collections import defaultdict
 from urllib.parse import urlparse
+from dataclasses import dataclass
+from typing import Optional
+
 import cloudscraper
 import requests.exceptions
+
+
+@dataclass
+class ScraperResponse:
+    """
+    Wrapper que normaliza requests.Response (cloudscraper) a la interfaz
+    mínima que espera el resto del código (status_code, text, content, headers, url).
+    """
+    status_code: int
+    text: str
+    content: bytes
+    headers: dict
+    url: str
+
+    @classmethod
+    def from_requests_response(cls, resp):
+        return cls(
+            status_code=resp.status_code,
+            text=resp.text,
+            content=resp.content,
+            headers=dict(resp.headers),
+            url=str(resp.url),
+        )
 
 
 class HttpClient:
@@ -22,25 +50,35 @@ class HttpClient:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0",
     ]
 
-    def __init__(self, rate_limit_per_second: float = 2.0, max_retries: int = 3, timeout: int = 30):
-        self._client = httpx.AsyncClient(
+    def __init__(
+        self,
+        rate_limit_per_second: float = 2.0,
+        max_retries: int = 3,
+        timeout: int = 30,
+        proxy: Optional[str] = None,
+    ):
+        client_kwargs = dict(
             timeout=timeout,
             follow_redirects=True,
             limits=httpx.Limits(max_keepalive_connections=20),
         )
+        if proxy:
+            client_kwargs["proxies"] = proxy
+
+        self._client = httpx.AsyncClient(**client_kwargs)
         self._rate_limit = rate_limit_per_second
         self._max_retries = max_retries
-        self._last_request: dict[str, float] = defaultdict(float)
+        self._last_request: dict[str, float] = {}
         self._ua_index = 0
-        self._scraper = cloudscraper.create_scraper(
-            browser={
-                'browser': 'chrome',
-                'platform': 'windows',
-                'mobile': False
-            }
-        )
 
-    async def get(self, url: str, **kwargs) -> httpx.Response:
+        scraper_kwargs = {
+            'browser': {'browser': 'chrome', 'platform': 'windows', 'mobile': False},
+        }
+        if proxy:
+            scraper_kwargs['proxies'] = {"http": proxy, "https": proxy}
+        self._scraper = cloudscraper.create_scraper(**scraper_kwargs)
+
+    async def get(self, url: str, **kwargs) -> ScraperResponse:
         await self._apply_rate_limit(url)
         headers = kwargs.pop("headers", {})
         headers.setdefault("User-Agent", self._rotate_ua())
@@ -50,51 +88,74 @@ class HttpClient:
         headers.setdefault("DNT", "1")
         headers.setdefault("Connection", "keep-alive")
 
+        follow_redirects = kwargs.pop("follow_redirects", True)
+        use_scraper = kwargs.pop("use_scraper", False)
+        params = kwargs.pop("params", None)
+
         for attempt in range(self._max_retries):
             try:
-                follow_redirects = kwargs.pop("follow_redirects", True)
-                use_scraper = kwargs.pop("use_scraper", False)
                 if use_scraper:
-                    # Usa cloudscraper de forma síncrona dentro de un executor para no bloquear el EventLoop
                     loop = asyncio.get_event_loop()
-                    resp = await loop.run_in_executor(None, lambda: self._scraper.get(url, headers=headers, allow_redirects=follow_redirects, timeout=self._client.timeout.read, **kwargs))
-                    # Cloudscraper usa requests.Response. Lo mapeamos artificialmente hacia httpx.Response solo para homogeneizar el status_code, content, text y headers
-                    # O alternativamente, usar el objeto tal cual sabiendo que tiene la misma interfaz para content, text, status_code.
-                    # Asumimos interface duck-typing sencilla en base a status_code, text, headers, content
+                    resp = await loop.run_in_executor(
+                        None,
+                        lambda: self._scraper.get(
+                            url,
+                            params=params,
+                            headers=headers,
+                            allow_redirects=follow_redirects,
+                            timeout=self._client.timeout if hasattr(self._client.timeout, 'read') else self._client.timeout,
+                        ),
+                    )
                     resp.raise_for_status()
-                    return resp
-                else:    
-                    resp = await self._client.get(url, headers=headers, follow_redirects=follow_redirects, **kwargs)
+                    return ScraperResponse.from_requests_response(resp)
+                else:
+                    resp = await self._client.get(
+                        url,
+                        params=params,
+                        headers=headers,
+                        follow_redirects=follow_redirects,
+                    )
                     resp.raise_for_status()
-                    return resp
+                    return ScraperResponse(
+                        status_code=resp.status_code,
+                        text=resp.text,
+                        content=resp.content,
+                        headers=dict(resp.headers),
+                        url=str(resp.url),
+                    )
             except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429:
-                    await asyncio.sleep(2 ** attempt)
-                elif e.response.status_code in [500, 502, 503, 504]:
+                if e.response.status_code in (429, 500, 502, 503, 504):
                     await asyncio.sleep(2 ** attempt)
                 else:
                     raise
             except httpx.ConnectError:
                 await asyncio.sleep(2 ** attempt)
             except requests.exceptions.RequestException as e:
-                # Omitimos excepciones específicas y reintentamos si es error de red o timeout
-                if getattr(e.response, "status_code", 200) in [429, 500, 502, 503, 504] or isinstance(e, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+                status = getattr(e.response, "status_code", None)
+                if status in (429, 500, 502, 503, 504) or isinstance(e, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
                     await asyncio.sleep(2 ** attempt)
                 else:
                     raise
 
         raise Exception(f"Failed after {self._max_retries} retries: {url}")
 
-    async def post(self, url: str, **kwargs) -> httpx.Response:
+    async def post(self, url: str, **kwargs) -> ScraperResponse:
         await self._apply_rate_limit(url)
         headers = kwargs.pop("headers", {})
         headers.setdefault("User-Agent", self._rotate_ua())
+        params = kwargs.pop("params", None)
 
         for attempt in range(self._max_retries):
             try:
-                resp = await self._client.post(url, headers=headers, **kwargs)
+                resp = await self._client.post(url, params=params, headers=headers, **kwargs)
                 resp.raise_for_status()
-                return resp
+                return ScraperResponse(
+                    status_code=resp.status_code,
+                    text=resp.text,
+                    content=resp.content,
+                    headers=dict(resp.headers),
+                    url=str(resp.url),
+                )
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:
                     await asyncio.sleep(2 ** attempt)
@@ -107,11 +168,24 @@ class HttpClient:
         response = await self.get(url, **kwargs)
         return response.content
 
-    async def head(self, url: str, **kwargs) -> httpx.Response:
+    async def head(self, url: str, **kwargs) -> ScraperResponse:
         await self._apply_rate_limit(url)
         headers = kwargs.pop("headers", {})
         headers.setdefault("User-Agent", self._rotate_ua())
-        return await self._client.head(url, headers=headers, **kwargs)
+        follow_redirects = kwargs.pop("follow_redirects", True)
+        timeout = kwargs.pop("timeout", None)
+
+        try:
+            resp = await self._client.head(url, headers=headers, follow_redirects=follow_redirects, timeout=timeout)
+            return ScraperResponse(
+                status_code=resp.status_code,
+                text=resp.text,
+                content=resp.content,
+                headers=dict(resp.headers),
+                url=str(resp.url),
+            )
+        except Exception:
+            raise
 
     def _rotate_ua(self) -> str:
         ua = self.USER_AGENTS[self._ua_index % len(self.USER_AGENTS)]
@@ -121,9 +195,11 @@ class HttpClient:
     async def _apply_rate_limit(self, url: str) -> None:
         domain = urlparse(url).netloc
         now = asyncio.get_event_loop().time()
-        elapsed = now - self._last_request[domain]
-        if elapsed < (1.0 / self._rate_limit):
-            await asyncio.sleep((1.0 / self._rate_limit) - elapsed)
+        last = self._last_request.get(domain)
+        if last is not None:
+            elapsed = now - last
+            if elapsed < (1.0 / self._rate_limit):
+                await asyncio.sleep((1.0 / self._rate_limit) - elapsed)
         self._last_request[domain] = asyncio.get_event_loop().time()
 
     async def close(self):
