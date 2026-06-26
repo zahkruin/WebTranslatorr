@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from app.api import torznab, health, domains
+from app.api import torznab, health, domains, providers
 from app.scraping.http_client import HttpClient
 from app.services.domain_resolver import DomainResolver, domain_check_loop
 from app.services.domain_strategies import DomainConfig
@@ -195,8 +195,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Include routers
+    # Include routers — providers must come before torznab so
+    # /api/providers (literal) is matched before /api/{provider_id} (dynamic)
     app.include_router(health.router)
+    app.include_router(providers.router)
     app.include_router(torznab.router)
     app.include_router(domains.router)
 

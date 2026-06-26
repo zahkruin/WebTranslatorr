@@ -208,11 +208,29 @@ async def _handle_torznab_request(
 
     results_lists = await asyncio.gather(*tasks)
 
-    # Merge de resultados
+    # Merge de resultados con logging de diagnóstico
     all_results = []
-    for result_list in results_lists:
+    provider_stats = {}
+    for i, result_list in enumerate(results_lists):
+        provider_id = providers[i].provider_id if i < len(providers) else "unknown"
         if isinstance(result_list, list):
+            count = len(result_list)
             all_results.extend(result_list)
+            provider_stats[provider_id] = count
+        else:
+            provider_stats[provider_id] = "error (non-list)"
+
+    # Log diagnóstico: cuántos resultados devolvió cada provider
+    if all_results:
+        logging.info(
+            f"Search '{q}' → {len(all_results)} total results from "
+            f"{sum(1 for v in provider_stats.values() if isinstance(v, int) and v > 0)}/"
+            f"{len(providers)} providers: {provider_stats}"
+        )
+    else:
+        logging.warning(
+            f"Search '{q}' → 0 results. All {len(providers)} providers returned empty: {provider_stats}"
+        )
 
     # Aplicar paginación
     total = len(all_results)
