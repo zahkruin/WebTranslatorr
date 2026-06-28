@@ -544,3 +544,254 @@ class TestUtilityFunctions:
         with patch("app.api.torznab.settings") as mock_settings:
             mock_settings.API_KEY = "secret"
             assert torznab._validate_apikey("wrong") is False
+
+
+# ── single-provider endpoint (/api/{provider_id}) ──────────────────
+
+
+class TestSingleProviderEndpoint:
+    """Tests for the /api/{provider_id} multi-indexer endpoint."""
+
+    def test_caps_without_apikey_returns_provider_caps(self):
+        """t=caps without API key should return caps for a valid provider."""
+        with patch("app.api.torznab.settings") as mock_settings:
+            mock_settings.API_KEY = "testkey"
+            mock_settings.EBOOKELO_ENABLED = True
+            mock_settings.EPUBLIBRE_ENABLED = False
+            mock_settings.LECTULANDIA_ENABLED = False
+            mock_settings.ESPAEBOOK_ENABLED = False
+            mock_settings.HOLAEBOOK_ENABLED = False
+            mock_settings.ANNASARCHIVE_ENABLED = False
+            mock_settings.MEJORTORRENT_ENABLED = False
+            mock_settings.DONTORRENT_ENABLED = False
+            mock_settings.ELEJANDRIA_ENABLED = False
+            mock_settings.GUTENBERG_ENABLED = False
+            mock_settings.EPUBFLIX1_ENABLED = False
+            mock_settings.LIBGEN_ENABLED = False
+            mock_settings.BOOOBOOK_ENABLED = False
+            mock_settings.LECTUEPUBLIBRE5_ENABLED = False
+            mock_settings.MUNDOEPUBLIBRE1_ENABLED = False
+            mock_settings.ZLIBRARY_ENABLED = False
+            mock_settings.RATE_LIMIT_PER_SECOND = 100.0
+            mock_settings.MAX_RETRIES = 1
+            mock_settings.REQUEST_TIMEOUT = 5
+            mock_settings.HTTP_PROXY = ""
+            mock_settings.CACHE_ENABLED = False
+            mock_settings.CACHE_TTL_SECONDS = 300
+            mock_settings.EXTERNAL_URL = "http://localhost:9811"
+
+            with patch("app.api.torznab.HttpClient") as mock_http_cls:
+                mock_http = MagicMock()
+                mock_http_cls.return_value = mock_http
+
+                app = FastAPI()
+                app.include_router(torznab.router)
+                client = TestClient(app)
+
+                torznab._init_providers()
+                response = client.get("/api/ebookelo?t=caps&apikey=wrong")
+                assert response.status_code == 200
+                assert "<?xml" in response.text
+                assert "caps" in response.text.lower()
+                assert "book-search" in response.text
+                # Should include provider display name in title
+                assert "WebTranslatorr - Ebookelo" in response.text
+
+    def test_caps_with_valid_key_has_provider_name(self):
+        """t=caps with valid key should include display_name and provider URL."""
+        with patch("app.api.torznab.settings") as mock_settings:
+            mock_settings.API_KEY = "testkey"
+            mock_settings.EBOOKELO_ENABLED = True
+            mock_settings.EPUBLIBRE_ENABLED = False
+            mock_settings.LECTULANDIA_ENABLED = False
+            mock_settings.ESPAEBOOK_ENABLED = False
+            mock_settings.HOLAEBOOK_ENABLED = False
+            mock_settings.ANNASARCHIVE_ENABLED = False
+            mock_settings.MEJORTORRENT_ENABLED = False
+            mock_settings.DONTORRENT_ENABLED = False
+            mock_settings.ELEJANDRIA_ENABLED = False
+            mock_settings.GUTENBERG_ENABLED = False
+            mock_settings.EPUBFLIX1_ENABLED = False
+            mock_settings.LIBGEN_ENABLED = False
+            mock_settings.BOOOBOOK_ENABLED = False
+            mock_settings.LECTUEPUBLIBRE5_ENABLED = False
+            mock_settings.MUNDOEPUBLIBRE1_ENABLED = False
+            mock_settings.ZLIBRARY_ENABLED = False
+            mock_settings.RATE_LIMIT_PER_SECOND = 100.0
+            mock_settings.MAX_RETRIES = 1
+            mock_settings.REQUEST_TIMEOUT = 5
+            mock_settings.HTTP_PROXY = ""
+            mock_settings.CACHE_ENABLED = False
+            mock_settings.CACHE_TTL_SECONDS = 300
+            mock_settings.EXTERNAL_URL = "http://localhost:9811"
+
+            with patch("app.api.torznab.HttpClient") as mock_http_cls:
+                mock_http = MagicMock()
+                mock_http_cls.return_value = mock_http
+
+                app = FastAPI()
+                app.include_router(torznab.router)
+                client = TestClient(app)
+
+                torznab._init_providers()
+                response = client.get("/api/ebookelo?t=caps&apikey=testkey")
+                assert response.status_code == 200
+                assert "WebTranslatorr - Ebookelo" in response.text
+                # Server URL should point to provider-specific path
+                assert "/api/ebookelo" in response.text
+
+    def test_caps_unknown_provider_returns_error(self):
+        """t=caps without valid key on unknown provider should return error 100."""
+        with patch("app.api.torznab.settings") as mock_settings:
+            mock_settings.API_KEY = "testkey"
+            mock_settings.EBOOKELO_ENABLED = False
+            mock_settings.EPUBLIBRE_ENABLED = False
+            mock_settings.LECTULANDIA_ENABLED = False
+            mock_settings.ESPAEBOOK_ENABLED = False
+            mock_settings.HOLAEBOOK_ENABLED = False
+            mock_settings.ANNASARCHIVE_ENABLED = False
+            mock_settings.MEJORTORRENT_ENABLED = False
+            mock_settings.DONTORRENT_ENABLED = False
+            mock_settings.ELEJANDRIA_ENABLED = False
+            mock_settings.GUTENBERG_ENABLED = False
+            mock_settings.EPUBFLIX1_ENABLED = False
+            mock_settings.LIBGEN_ENABLED = False
+            mock_settings.BOOOBOOK_ENABLED = False
+            mock_settings.LECTUEPUBLIBRE5_ENABLED = False
+            mock_settings.MUNDOEPUBLIBRE1_ENABLED = False
+            mock_settings.ZLIBRARY_ENABLED = False
+            mock_settings.RATE_LIMIT_PER_SECOND = 100.0
+            mock_settings.MAX_RETRIES = 1
+            mock_settings.REQUEST_TIMEOUT = 5
+            mock_settings.HTTP_PROXY = ""
+
+            app = FastAPI()
+            app.include_router(torznab.router)
+            client = TestClient(app)
+
+            torznab._init_providers()
+            response = client.get("/api/nonexistent?t=caps&apikey=wrong")
+            assert response.status_code == 200
+            assert "error" in response.text.lower()
+
+    def test_search_returns_error_with_wrong_key(self):
+        """Search on single provider with wrong API key should return error."""
+        with patch("app.api.torznab.settings") as mock_settings:
+            mock_settings.API_KEY = "testkey"
+            mock_settings.EBOOKELO_ENABLED = True
+            mock_settings.EPUBLIBRE_ENABLED = False
+            mock_settings.LECTULANDIA_ENABLED = False
+            mock_settings.ESPAEBOOK_ENABLED = False
+            mock_settings.HOLAEBOOK_ENABLED = False
+            mock_settings.ANNASARCHIVE_ENABLED = False
+            mock_settings.MEJORTORRENT_ENABLED = False
+            mock_settings.DONTORRENT_ENABLED = False
+            mock_settings.ELEJANDRIA_ENABLED = False
+            mock_settings.GUTENBERG_ENABLED = False
+            mock_settings.EPUBFLIX1_ENABLED = False
+            mock_settings.LIBGEN_ENABLED = False
+            mock_settings.BOOOBOOK_ENABLED = False
+            mock_settings.LECTUEPUBLIBRE5_ENABLED = False
+            mock_settings.MUNDOEPUBLIBRE1_ENABLED = False
+            mock_settings.ZLIBRARY_ENABLED = False
+            mock_settings.RATE_LIMIT_PER_SECOND = 100.0
+            mock_settings.MAX_RETRIES = 1
+            mock_settings.REQUEST_TIMEOUT = 5
+            mock_settings.HTTP_PROXY = ""
+            mock_settings.CACHE_ENABLED = False
+            mock_settings.CACHE_TTL_SECONDS = 300
+
+            with patch("app.api.torznab.HttpClient") as mock_http_cls:
+                mock_http = MagicMock()
+                mock_http_cls.return_value = mock_http
+
+                app = FastAPI()
+                app.include_router(torznab.router)
+                client = TestClient(app)
+
+                torznab._init_providers()
+                response = client.get(
+                    "/api/ebookelo?t=search&q=test&apikey=wrong"
+                )
+                assert response.status_code == 200
+                assert "error" in response.text.lower()
+
+    def test_search_unknown_provider_returns_error(self):
+        """Search on unknown provider should return error XML."""
+        with patch("app.api.torznab.settings") as mock_settings:
+            mock_settings.API_KEY = "testkey"
+            mock_settings.EBOOKELO_ENABLED = False
+            mock_settings.EPUBLIBRE_ENABLED = False
+            mock_settings.LECTULANDIA_ENABLED = False
+            mock_settings.ESPAEBOOK_ENABLED = False
+            mock_settings.HOLAEBOOK_ENABLED = False
+            mock_settings.ANNASARCHIVE_ENABLED = False
+            mock_settings.MEJORTORRENT_ENABLED = False
+            mock_settings.DONTORRENT_ENABLED = False
+            mock_settings.ELEJANDRIA_ENABLED = False
+            mock_settings.GUTENBERG_ENABLED = False
+            mock_settings.EPUBFLIX1_ENABLED = False
+            mock_settings.LIBGEN_ENABLED = False
+            mock_settings.BOOOBOOK_ENABLED = False
+            mock_settings.LECTUEPUBLIBRE5_ENABLED = False
+            mock_settings.MUNDOEPUBLIBRE1_ENABLED = False
+            mock_settings.ZLIBRARY_ENABLED = False
+            mock_settings.RATE_LIMIT_PER_SECOND = 100.0
+            mock_settings.MAX_RETRIES = 1
+            mock_settings.REQUEST_TIMEOUT = 5
+            mock_settings.HTTP_PROXY = ""
+
+            app = FastAPI()
+            app.include_router(torznab.router)
+            client = TestClient(app)
+
+            torznab._init_providers()
+            response = client.get(
+                "/api/nonexistent?t=search&q=test&apikey=testkey"
+            )
+            assert response.status_code == 200
+            assert "error" in response.text.lower()
+            assert "not found" in response.text.lower()
+
+    def test_aggregate_caps_title_is_generic(self):
+        """Aggregate /api?t=caps should still show 'WebTranslatorr' without provider name."""
+        with patch("app.api.torznab.settings") as mock_settings:
+            mock_settings.API_KEY = "testkey"
+            mock_settings.EBOOKELO_ENABLED = True
+            mock_settings.EPUBLIBRE_ENABLED = False
+            mock_settings.LECTULANDIA_ENABLED = False
+            mock_settings.ESPAEBOOK_ENABLED = False
+            mock_settings.HOLAEBOOK_ENABLED = False
+            mock_settings.ANNASARCHIVE_ENABLED = False
+            mock_settings.MEJORTORRENT_ENABLED = False
+            mock_settings.DONTORRENT_ENABLED = False
+            mock_settings.ELEJANDRIA_ENABLED = False
+            mock_settings.GUTENBERG_ENABLED = False
+            mock_settings.EPUBFLIX1_ENABLED = False
+            mock_settings.LIBGEN_ENABLED = False
+            mock_settings.BOOOBOOK_ENABLED = False
+            mock_settings.LECTUEPUBLIBRE5_ENABLED = False
+            mock_settings.MUNDOEPUBLIBRE1_ENABLED = False
+            mock_settings.ZLIBRARY_ENABLED = False
+            mock_settings.RATE_LIMIT_PER_SECOND = 100.0
+            mock_settings.MAX_RETRIES = 1
+            mock_settings.REQUEST_TIMEOUT = 5
+            mock_settings.HTTP_PROXY = ""
+            mock_settings.CACHE_ENABLED = False
+            mock_settings.CACHE_TTL_SECONDS = 300
+            mock_settings.EXTERNAL_URL = "http://localhost:9811"
+
+            with patch("app.api.torznab.HttpClient") as mock_http_cls:
+                mock_http = MagicMock()
+                mock_http_cls.return_value = mock_http
+
+                app = FastAPI()
+                app.include_router(torznab.router)
+                client = TestClient(app)
+
+                torznab._init_providers()
+                response = client.get("/api?t=caps&apikey=testkey")
+                assert response.status_code == 200
+                assert "WebTranslatorr" in response.text
+                # Aggregate caps should NOT include provider name
+                assert "WebTranslatorr -" not in response.text

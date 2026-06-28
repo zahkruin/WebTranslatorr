@@ -8,10 +8,19 @@ from config import settings
 class CapsGenerator:
 
     @staticmethod
-    def generate(providers: list) -> str:
+    def generate(
+        providers: list,
+        server_title: str | None = None,
+        server_url: str | None = None,
+    ) -> str:
         """
         Agrega las capabilities de todos los providers activos
         en un solo XML de caps.
+
+        Cuando se llama desde /api/{provider_id} (single-provider),
+        `server_title` recibe el `display_name` del provider y
+        `server_url` apunta a `/api/{provider_id}` para que Readarr
+        muestre cada indexer con su nombre real y URL correcta.
         """
         # Determinar capacidades agregadas
         supports_book = any(p.supports_book_search for p in providers)
@@ -29,11 +38,14 @@ class CapsGenerator:
         # Server info — use configured external URL so *Arr apps can reach us
         external_url = settings.EXTERNAL_URL.rstrip("/") + "/"
 
+        title = server_title or "WebTranslatorr"
+        url = server_url or external_url
+
         SubElement(caps, "server", attrib={
             "version": "1.0",
-            "title": "WebTranslatorr",
+            "title": title,
             "strapline": "Universal Torznab Proxy",
-            "url": external_url,
+            "url": url,
         })
 
         # Limits

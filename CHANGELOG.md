@@ -40,8 +40,17 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - `TorznabErrors` ahora expone `error_headers()` para generar headers HTTP de error estándar
 - `caps.py` y `mapper.py` importan `settings` para usar `EXTERNAL_URL` configurable
 
+## [0.1.2] — 2026-06-28
+
+### Changed
+- **Multi-indexer CAPS personalizado**: cada provider individual (`/api/{provider_id}`) ahora devuelve `<server title="WebTranslatorr - {display_name}">` y `<server url="{EXTERNAL_URL}/api/{provider_id}">`, permitiendo a Readarr mostrar cada indexer con su nombre real (ej: "WebTranslatorr - EpubLibre", "WebTranslatorr - Library Genesis") en lugar de todos con el mismo nombre genérico "WebTranslatorr"
+- `CapsGenerator.generate()` ahora acepta parámetros opcionales `server_title` y `server_url` para personalizar el XML de capabilities
+
+### Added
+- Tests para el endpoint multi-indexer `/api/{provider_id}`: CAPS con/sin API key, CAPS con nombre personalizado, búsqueda con API key inválida, provider desconocido, y verificación de que el endpoint agregado no incluye nombres de provider
+
 ## [Unreleased]
 
 ---
 
-> **Última actualización**: 2026-06-28 — v0.1.1 con fixes de compatibilidad Readarr.
+> **Última actualización**: 2026-06-28 — v0.1.2 con personalización de nombres de indexer.

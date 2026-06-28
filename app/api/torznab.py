@@ -426,15 +426,21 @@ async def provider_torznab_api(
       http://webtranslatorr:9811/api/lectulandia?apikey=xxx
       http://webtranslatorr:9811/api/libgen?apikey=xxx
     """
+    provider_id_lower = provider_id.lower()
+
     # Validar API key
     if not _validate_apikey(apikey):
         # t=caps sin API key: permitir detección del servicio
         if t and t.lower() == "caps":
-            provider_id_lower = provider_id.lower()
             try:
                 provider = registry.get(provider_id_lower)
-                capabilities = [provider.get_capabilities()]
-                xml = CapsGenerator.generate(capabilities)
+                caps = provider.get_capabilities()
+                server_url = settings.EXTERNAL_URL.rstrip("/") + f"/api/{provider_id_lower}"
+                xml = CapsGenerator.generate(
+                    [caps],
+                    server_title=f"WebTranslatorr - {caps.display_name}",
+                    server_url=server_url,
+                )
                 return Response(content=xml, media_type="application/xml")
             except Exception:
                 pass
@@ -450,8 +456,6 @@ async def provider_torznab_api(
         )
 
     # Obtener el provider específico
-    provider_id_lower = provider_id.lower()
-
     try:
         provider = registry.get(provider_id_lower)
     except Exception:
@@ -460,10 +464,17 @@ async def provider_torznab_api(
             media_type="application/xml"
         )
 
-    # t=caps → devolver capabilities de este provider individual
+    # t=caps → devolver capabilities de este provider individual,
+    # con título y URL personalizados para que Readarr lo muestre
+    # como un indexer independiente con su nombre real
     if t and t.lower() == "caps":
-        capabilities = [provider.get_capabilities()]
-        xml = CapsGenerator.generate(capabilities)
+        caps = provider.get_capabilities()
+        server_url = settings.EXTERNAL_URL.rstrip("/") + f"/api/{provider_id_lower}"
+        xml = CapsGenerator.generate(
+            [caps],
+            server_title=f"WebTranslatorr - {caps.display_name}",
+            server_url=server_url,
+        )
         return Response(content=xml, media_type="application/xml")
 
     params = dict(request.query_params)
