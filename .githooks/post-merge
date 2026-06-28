@@ -1,0 +1,13 @@
+#!/bin/sh
+# .githooks/post-merge
+# Detecta cambios entrantes y sugiere validar documentación agéntica
+
+CHANGED_FILES=$(git diff --name-only ORIG_HEAD HEAD 2>/dev/null)
+SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '\.py$' 2>/dev/null || true)
+
+if [ -n "$SOURCE_FILES" ]; then
+    echo ""
+    echo "⚠️  Cambios entrantes en código fuente. Valida la documentación agéntica:"
+    echo "   python scripts/validate_docs.py --strict"
+    echo ""
+fi

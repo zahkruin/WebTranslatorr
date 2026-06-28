@@ -1,0 +1,168 @@
+{
+  "project_name": "WebTranslatorr",
+  "version": "1.0.0",
+  "generated_at": "2026-06-28T10:47:00+02:00",
+  "derived_from_commit": "0161e234541ba74c6e97e94e6429f43893c5a170",
+  "rules": [
+    {
+      "pattern": "app/providers/books/*.py",
+      "documents": ["context/06-provider-strategies/{provider_name}.md", "context/05-providers-base.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/providers/video/*.py",
+      "documents": ["context/06-provider-strategies/{provider_name}.md", "context/05-providers-base.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/providers/base.py",
+      "documents": ["context/05-providers-base.md", "context/03-data-models.md"],
+      "priority": "critical"
+    },
+    {
+      "pattern": "app/providers/registry.py",
+      "documents": ["context/05-providers-base.md", "context/07-smart-router.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/api/torznab.py",
+      "documents": ["context/13-api-endpoints.md", "context/08-torznab-protocol.md", "context/17-adding-providers.md"],
+      "priority": "critical"
+    },
+    {
+      "pattern": "app/api/health.py",
+      "documents": ["context/13-api-endpoints.md"],
+      "priority": "low"
+    },
+    {
+      "pattern": "app/api/domains.py",
+      "documents": ["context/13-api-endpoints.md", "context/10-domain-resolver.md"],
+      "priority": "medium"
+    },
+    {
+      "pattern": "app/api/providers.py",
+      "documents": ["context/13-api-endpoints.md"],
+      "priority": "low"
+    },
+    {
+      "pattern": "app/core/models.py",
+      "documents": ["context/03-data-models.md", "context/08-torznab-protocol.md", "context/05-providers-base.md"],
+      "priority": "critical"
+    },
+    {
+      "pattern": "app/core/categories.py",
+      "documents": ["context/09-categories.md", "context/07-smart-router.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/core/enums.py",
+      "documents": ["context/03-data-models.md", "context/07-smart-router.md"],
+      "priority": "medium"
+    },
+    {
+      "pattern": "app/core/exceptions.py",
+      "documents": ["context/03-data-models.md", "context/16-known-issues.md"],
+      "priority": "medium"
+    },
+    {
+      "pattern": "app/routing/smart_router.py",
+      "documents": ["context/07-smart-router.md", "context/01-architecture.md"],
+      "priority": "critical"
+    },
+    {
+      "pattern": "app/scraping/http_client.py",
+      "documents": ["context/04-http-client.md", "context/01-architecture.md"],
+      "priority": "critical"
+    },
+    {
+      "pattern": "app/scraping/parser.py",
+      "documents": ["context/04-http-client.md"],
+      "priority": "low"
+    },
+    {
+      "pattern": "app/scraping/wp_api_client.py",
+      "documents": ["context/06-provider-strategies/*.md", "context/05-providers-base.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/services/cache.py",
+      "documents": ["context/11-cache.md", "context/01-architecture.md"],
+      "priority": "medium"
+    },
+    {
+      "pattern": "app/services/domain_resolver.py",
+      "documents": ["context/10-domain-resolver.md", "context/01-architecture.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/services/domain_strategies.py",
+      "documents": ["context/10-domain-resolver.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/torznab/mapper.py",
+      "documents": ["context/08-torznab-protocol.md", "context/13-api-endpoints.md"],
+      "priority": "critical"
+    },
+    {
+      "pattern": "app/torznab/caps.py",
+      "documents": ["context/08-torznab-protocol.md", "context/13-api-endpoints.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/torznab/errors.py",
+      "documents": ["context/08-torznab-protocol.md"],
+      "priority": "medium"
+    },
+    {
+      "pattern": "app/utils/zip_extractor.py",
+      "documents": ["context/12-zip-extractor.md"],
+      "priority": "medium"
+    },
+    {
+      "pattern": "app/server.py",
+      "documents": ["context/01-architecture.md", "context/10-domain-resolver.md", "context/14-deployment.md"],
+      "priority": "critical"
+    },
+    {
+      "pattern": "config.py",
+      "documents": ["context/02-configuration.md", "context/14-deployment.md"],
+      "priority": "critical"
+    },
+    {
+      "pattern": "main.py",
+      "documents": ["context/14-deployment.md", "context/01-architecture.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "Dockerfile",
+      "documents": ["context/14-deployment.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "docker-compose.yml",
+      "documents": ["context/14-deployment.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": ".github/workflows/*",
+      "documents": ["context/14-deployment.md"],
+      "priority": "medium"
+    },
+    {
+      "pattern": "tests/*",
+      "documents": ["context/15-testing.md"],
+      "priority": "medium"
+    },
+    {
+      "pattern": "*.md",
+      "documents": null,
+      "priority": "skip"
+    },
+    {
+      "pattern": "*.json",
+      "documents": null,
+      "priority": "skip"
+    }
+  ]
+}

@@ -144,6 +144,50 @@ async def lifespan(app: FastAPI):
             known_domain_pattern=r"z-library\.\w+|singlelogin\.\w+",
         ))
 
+    # --- Integration plan — new book providers ---
+    if settings.EPUBGRATIS_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="epubgratis",
+            default_domain=settings.EPUBGRATIS_DOMAIN,
+            known_domain_pattern=r"epubgratis\.\w+",
+        ))
+
+    if settings.EBIBLIOTECA_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="ebiblioteca",
+            default_domain=settings.EBIBLIOTECA_DOMAIN,
+            known_domain_pattern=r"ebiblioteca\.\w+",
+        ))
+
+    if settings.BAJAEEBOOKS_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="bajaebooks",
+            default_domain=settings.BAJAEEBOOKS_DOMAIN,
+            known_domain_pattern=r"bajaebooks\.\w+",
+        ))
+
+    if settings.LELIBROS_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="lelibros",
+            default_domain=settings.LELIBROS_DOMAIN,
+            known_domain_pattern=r"lelibros\.\w+",
+        ))
+
+    # --- Integration plan — new video/torrent providers ---
+    if settings.DIVXTOTAL_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="divxtotal",
+            default_domain=settings.DIVXTOTAL_DOMAIN,
+            known_domain_pattern=r"divxtotal\.\w+",
+        ))
+
+    if settings.ELITETORRENT_ENABLED:
+        resolver.register_provider(DomainConfig(
+            provider_id="elitetorrent",
+            default_domain=settings.ELITETORRENT_DOMAIN,
+            known_domain_pattern=r"elitetorrent\.\w+",
+        ))
+
     app.state.domain_resolver = resolver
     
     # Initialize providers using the resolver

@@ -8,3 +8,11 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
+      - id: validate-agentic-docs
+        name: Validate agentic documentation
+        entry: python scripts/validate_docs.py --strict
+        language: system
+        pass_filenames: false
+        always_run: false
+        files: ^(app/|config\.py$|main\.py$|\.kilo/)
+        stages: [pre-commit]

@@ -1,0 +1,73 @@
+name: Agentic Docs Validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**/*.py'
+      - 'config.py'
+      - 'main.py'
+      - '.kilo/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/**/*.py'
+      - 'config.py'
+      - 'main.py'
+      - '.kilo/**'
+
+jobs:
+  validate-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine diff base
+        id: base
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "ref=${{ github.event.before }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=origin/${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Classify source changes
+        id: classify
+        run: |
+          python scripts/classify_changes.py --base ${{ steps.base.outputs.ref }} --json > classify_output.json
+          cat classify_output.json
+
+      - name: Check if doc update is required
+        id: check
+        run: |
+          SEVERITY=$(python -c "import json; d=json.load(open('classify_output.json')); print(d['severity'])")
+          NEEDED=$(python -c "import json; d=json.load(open('classify_output.json')); print(d['docs_update_required'])")
+          echo "severity=$SEVERITY" >> $GITHUB_OUTPUT
+          echo "needed=$NEEDED" >> $GITHUB_OUTPUT
+          if [ "$SEVERITY" = "critical" ]; then
+            echo "::warning::Critical source changes detected. Documentation must be updated."
+          fi
+
+      - name: Validate agentic documentation
+        if: steps.check.outputs.needed == 'True'
+        run: python scripts/validate_docs.py --strict
+
+      - name: Block merge if critical changes and no doc updates
+        if: steps.check.outputs.severity == 'critical'
+        run: |
+          DOC_CHANGES=$(git diff --name-only ${{ steps.base.outputs.ref }} | grep '^.kilo/' || true)
+          if [ -z "$DOC_CHANGES" ]; then
+            echo "::error::Critical source changes detected but no .kilo/ documentation updated."
+            echo "Affected docs (from classification):"
+            python -c "import json; d=json.load(open('classify_output.json')); [print(f'  - {doc}') for doc in d.get('affected_docs', [])]"
+            exit 1
+          fi
+          echo "Documentation changes detected:"
+          echo "$DOC_CHANGES"

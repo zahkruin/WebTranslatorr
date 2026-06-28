@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     LECTUEPUBLIBRE5_ENABLED: bool = True
     MUNDOEPUBLIBRE1_ENABLED: bool = True
     ZLIBRARY_ENABLED: bool = True
+    # Integration plan Phase 1 & 2 — new providers
+    EPUBGRATIS_ENABLED: bool = True
+    EBIBLIOTECA_ENABLED: bool = True
+    BAJAEEBOOKS_ENABLED: bool = True
+    LELIBROS_ENABLED: bool = True
+    DIVXTOTAL_ENABLED: bool = False  # Domain very unstable, disabled by default
+    ELITETORRENT_ENABLED: bool = False  # Unverified, disabled by default
 
     # Dominios (actualizables sin redesplegar)
     MEJORTORRENT_DOMAIN: str = "https://www42.mejortorrent.eu"
@@ -53,6 +60,13 @@ class Settings(BaseSettings):
     LECTUEPUBLIBRE5_DOMAIN: str = "https://lectuepublibre5.com"
     MUNDOEPUBLIBRE1_DOMAIN: str = "https://mundoepublibre1.com"
     ZLIBRARY_DOMAIN: str = "https://z-library.sk"
+    # Integration plan — new provider domains
+    EPUBGRATIS_DOMAIN: str = "https://www.epubgratis.org"
+    EBIBLIOTECA_DOMAIN: str = "https://ebiblioteca.org"
+    BAJAEEBOOKS_DOMAIN: str = "https://bajaebooks.info"
+    LELIBROS_DOMAIN: str = "https://lelibros.online"
+    DIVXTOTAL_DOMAIN: str = "https://divxtotal.wtf"
+    ELITETORRENT_DOMAIN: str = "https://www.elitetorrent.com"
 
     # TMDB (para resolver IMDb ID → título español)
     TMDB_API_KEY: str = ""

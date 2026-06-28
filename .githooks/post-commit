@@ -1,0 +1,18 @@
+#!/bin/bash
+# .githooks/post-commit → Instalar mediante pre-commit o manualmente
+#
+# Detecta cambios en archivos fuente y sugiere actualizar la documentación agéntica.
+
+CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || git diff --name-only --cached)
+SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '\.(py|ts|js|go|rs|java|cs|rb|php)$' 2>/dev/null || true)
+
+if [ -n "$SOURCE_FILES" ]; then
+    echo ""
+    echo "⚠️  Código fuente modificado. La documentación agéntica (.kilo/) puede necesitar actualización."
+    echo "   Archivos modificados:"
+    echo "$SOURCE_FILES" | while read -r f; do echo "     - $f"; done
+    echo ""
+    echo "   Ejecuta: python scripts/validate_docs.py --strict"
+    echo "   Y actualiza los documentos en .kilo/ según corresponda."
+    echo ""
+fi

@@ -1,0 +1,47 @@
+{
+  "phase": "phase2",
+  "generated_at": "2026-06-28T10:47:00+02:00",
+  "endpoints": [
+    {"method": "GET", "path": "/api", "params": ["t", "q", "cat", "apikey", "offset", "limit", "imdbid", "tvdbid", "season", "ep", "author", "title"], "description": "Torznab multi-provider search"},
+    {"method": "GET", "path": "/api/{provider_id}", "params": ["t", "q", "cat", "apikey", "offset", "limit", "imdbid", "tvdbid", "season", "ep", "author", "title"], "description": "Torznab single-provider search"},
+    {"method": "GET", "path": "/api/download", "params": ["provider", "id", "fmt"], "description": "Download proxy"},
+    {"method": "GET", "path": "/health", "params": ["brief"], "description": "Health check"},
+    {"method": "GET", "path": "/health/search", "params": ["q"], "description": "Deep health search"},
+    {"method": "GET", "path": "/api/domains", "params": [], "description": "Domain status"},
+    {"method": "POST", "path": "/api/domains/refresh", "params": [], "description": "Force domain resolution"},
+    {"method": "POST", "path": "/api/domains/refresh/{provider_id}", "params": [], "description": "Force single provider domain resolution"},
+    {"method": "GET", "path": "/api/domains/health/{provider_id}", "params": [], "description": "Domain health check"},
+    {"method": "GET", "path": "/api/providers", "params": ["apikey"], "description": "Provider discovery"},
+    {"method": "GET", "path": "/api/providers/{provider_id}", "params": ["apikey"], "description": "Single provider details"}
+  ],
+  "error_paths": [
+    {"code": 100, "description": "Incorrect API Key", "trigger": "Invalid apikey param"},
+    {"code": 200, "description": "No search results", "trigger": "All providers return empty"},
+    {"code": 201, "description": "Missing search parameter (q)", "trigger": "No query provided"},
+    {"code": 202, "description": "Invalid category", "trigger": "Malformed cat param"},
+    {"code": 500, "description": "Server error", "trigger": "Unhandled exception in provider"}
+  ],
+  "anti_patterns": [
+    "profitablecpmgate.com ad-gate links (Ebookelo)",
+    "Hardcoded provider URLs",
+    "Synchronous HTTP requests",
+    "Manual XML generation (use ElementTree)",
+    "Returning dicts from search() (use SearchResult)",
+    "Exception propagation from providers"
+  ],
+  "test_coverage": {
+    "total_test_files": 33,
+    "coverage_target": 90,
+    "providers_without_tests": ["epubflix1", "libgen", "booobook", "lectuepublibre5", "mundoepublibre1", "zlibrary"],
+    "orphan_modules": ["app/scraping/parser.py"]
+  },
+  "detected_issues": [
+    {"id": 7, "severity": "high", "description": "Default provider domains likely outdated"},
+    {"id": 8, "severity": "high", "description": "Elejandria and Gutenberg not implemented (stubs only)"},
+    {"id": 9, "severity": "medium", "description": "Download URLs not cached"},
+    {"id": 10, "severity": "medium", "description": "HTTP proxy support exists but unverified"},
+    {"id": 11, "severity": "medium", "description": "_last_request dict grows unbounded in HttpClient"},
+    {"id": 12, "severity": "low", "description": "parser.py is unused orphan code"},
+    {"id": 14, "severity": "medium", "description": "Incomplete test coverage for new providers"}
+  ]
+}

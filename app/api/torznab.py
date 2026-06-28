@@ -42,6 +42,14 @@ from app.providers.books.booobook import BooobookProvider
 from app.providers.books.lectuepublibre5 import LectuEpubLibre5Provider
 from app.providers.books.mundoepublibre1 import MundoEpubLibre1Provider
 from app.providers.books.zlibrary import ZLibraryProvider
+# Integration plan — new book providers
+from app.providers.books.lelibros import LeLibrosProvider
+from app.providers.books.bajaebooks import BajaebooksProvider
+from app.providers.books.ebiblioteca import EbibliotecaProvider
+from app.providers.books.epubgratis import EpubgratisProvider
+# Integration plan — new video/torrent providers
+from app.providers.video.divxtotal import DivxtotalProvider
+from app.providers.video.elitetorrent import EliteTorrentProvider
 from app.routing.smart_router import smart_router
 from app.utils.zip_extractor import ZipExtractor
 from app.torznab.mapper import TorznabMapper
@@ -118,6 +126,26 @@ def _init_providers(resolver=None):
 
     if settings.ZLIBRARY_ENABLED:
         registry.register(ZLibraryProvider(http_client, resolver))
+
+    # --- Integration plan — new book providers ---
+    if settings.LELIBROS_ENABLED:
+        registry.register(LeLibrosProvider(http_client, resolver))
+
+    if settings.BAJAEEBOOKS_ENABLED:
+        registry.register(BajaebooksProvider(http_client, resolver))
+
+    if settings.EBIBLIOTECA_ENABLED:
+        registry.register(EbibliotecaProvider(http_client, resolver))
+
+    if settings.EPUBGRATIS_ENABLED:
+        registry.register(EpubgratisProvider(http_client, resolver))
+
+    # --- Integration plan — new video/torrent providers ---
+    if settings.DIVXTOTAL_ENABLED:
+        registry.register(DivxtotalProvider(http_client, resolver))
+
+    if settings.ELITETORRENT_ENABLED:
+        registry.register(EliteTorrentProvider(http_client, resolver))
 
     # Providers configurados pero no implementados aún
     if settings.ELEJANDRIA_ENABLED:
