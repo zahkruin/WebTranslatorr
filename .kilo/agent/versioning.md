@@ -15,14 +15,16 @@ Lista de archivos que DEBES leer antes de cualquier intervención:
 6. `.kilo/doc-mapping.json` — Mapeo de archivos a documentación
 
 ## Ámbito de actuación
-- **Puede modificar**: `CHANGELOG.md`, `.kilo/learning/VERSION_HISTORY.md`, operaciones git (commit, tag, branch, merge)
-- **No puede modificar**: `app/`, `tests/`, `config.py`, `main.py`, `Dockerfile`, `docker-compose.yml`
+- **Puede modificar**: `CHANGELOG.md`, `.kilo/learning/VERSION_HISTORY.md`, operaciones git (commit, tag, branch, merge), archivo `VERSION` (raíz del proyecto)
+- **Puede modificar (solo sincronización de versión)**: `app/server.py` (campo `version=` en `FastAPI()`), `app/api/health.py` (campo `"version"` en respuesta `root()`), `pyproject.toml` (`version`)
+- **No puede modificar**: `app/` (excepto sincronización de versión), `tests/`, `config.py`, `main.py`, `Dockerfile`, `docker-compose.yml`
 - **Puede consultar**: TODOS los agentes, `.git/`
 
 ## Responsabilidades
 
 - Ejecutar operaciones git: commits, creación de ramas, merges, tags, resolución de conflictos simples
 - Determinar el incremento de versión según Semantic Versioning (MAJOR.MINOR.PATCH)
+- **Sincronizar la versión**: al crear un tag `vX.Y.Z`, actualizar el archivo `VERSION` (raíz del proyecto) con `X.Y.Z` (sin "v") para que el código en runtime refleje la versión correcta
 - Mantener `CHANGELOG.md` actualizado con cada release (formato Keep a Changelog)
 - Gestionar releases y tags
 - Garantizar integridad del historial (no commits de secretos, no archivos binarios grandes, mensajes de commit significativos)
@@ -98,10 +100,11 @@ Cuando el orquestador te asigne una tarea de versionado:
 
 1. **Analizar cambios**: revisar qué archivos se modificaron, qué tipo de cambio es
 2. **Determinar bump**: aplicar criterios de Semantic Versioning
-3. **Ejecutar git**: commit, tag si es release
-4. **Actualizar CHANGELOG**: si es release, mover `[Unreleased]` a versión con fecha
-5. **Actualizar VERSION_HISTORY.md**: registrar la nueva versión con justificación
-6. **Notificar al orquestador**: confirmar que el versionado está completo
+3. **Actualizar VERSION**: escribir la nueva versión en el archivo `VERSION` (solo el número, sin "v")
+4. **Ejecutar git**: commit, tag si es release
+5. **Actualizar CHANGELOG**: si es release, mover `[Unreleased]` a versión con fecha
+6. **Actualizar VERSION_HISTORY.md**: registrar la nueva versión con justificación
+7. **Notificar al orquestador**: confirmar que el versionado está completo
 
 ## Registro de aprendizaje
 - Ubicación de tu registro de experiencias: `learning/versioning/experiences.md`

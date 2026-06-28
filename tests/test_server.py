@@ -48,7 +48,9 @@ class TestCreateApp:
         """create_app should return a FastAPI instance."""
         app = create_app()
         assert app.title == "WebTranslatorr"
-        assert app.version == "1.0.0"
+        # Version is read from VERSION file at runtime; in tests without
+        # the file present it falls back to "0.0.0"
+        assert app.version in ("0.1.2", "0.0.0")
 
     def test_has_health_route(self):
         """The app should have the /health endpoint registered."""

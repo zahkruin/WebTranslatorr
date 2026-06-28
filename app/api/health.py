@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Query
 
 from app.providers.registry import registry
+from app.core.version import get_version
 
 router = APIRouter()
 
@@ -18,7 +19,7 @@ async def root():
     """
     return {
         "service": "WebTranslatorr",
-        "version": "1.0.0",
+        "version": get_version(),
         "type": "torznab",
         "docs": "/api?t=caps",
         "health": "/health",

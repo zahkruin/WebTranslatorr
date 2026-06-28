@@ -14,6 +14,7 @@ from app.api import torznab, health, domains, providers
 from app.scraping.http_client import HttpClient
 from app.services.domain_resolver import DomainResolver, domain_check_loop
 from app.services.domain_strategies import DomainConfig
+from app.core.version import get_version
 
 
 @asynccontextmanager
@@ -226,7 +227,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="WebTranslatorr",
         description="Universal Torznab Proxy for *Arr applications",
-        version="1.0.0",
+        version=get_version(),
         lifespan=lifespan,
     )
 
