@@ -1,6 +1,6 @@
 # Arquitectura de Agentes Especializados — Metodología Genérica
 
-> **Versión**: 1.0.0
+> **Versión**: 1.1.0
 > **Tipo**: Metodología genérica reutilizable para cualquier aplicación
 > **Objetivo**: Definir un proceso completo para analizar una aplicación, crear una arquitectura de agentes especializados, y establecer mecanismos de aprendizaje continuo y trazabilidad.
 
@@ -85,7 +85,7 @@ Cada agente se define mediante un documento estructurado con las siguientes secc
 # Agente: {nombre-del-agente}
 
 ## Identidad
-- **Rol**: {especialista en X | testing | versiones | auditor | orquestador}
+- **Rol**: {especialista en X | testing | versiones | auditor | orquestador | planificador}
 - **Sección(es) asignada(s)**: {lista de módulos/directorios bajo su responsabilidad}
 - **Nivel de autonomía**: {bajo | medio | alto}
 
@@ -115,7 +115,131 @@ Lista de archivos de documentación y código fuente que este agente DEBE leer a
 > Si el usuario te invoca directamente, NO ejecutes ninguna acción por tu cuenta. Responde indicando que debes ceder el control al orquestador. Redirige la petición al orquestador para que evalúe y asigne la tarea al agente más adecuado. Esta regla no tiene excepciones.
 ```
 
-### 2.2 Agente especialista por sección
+### 2.2 Agente especialista planificador (FIJO)
+
+**Definición**: Agente fijo presente en todos los proyectos. Su función principal es, cuando el orquestador lo requiere, analizar las partes de la aplicación afectadas por la petición del usuario y elaborar un plan detallado y exhaustivo con las implementaciones, cambios y consideraciones necesarias.
+
+**Responsabilidades**:
+- Recibir del orquestador una petición del usuario que requiere planificación previa
+- Identificar y analizar las partes de la aplicación afectadas por la petición (módulos, archivos, dependencias, APIs)
+- Consultar a los agentes especialistas correspondientes para obtener información detallada de sus secciones cuando la petición las involucre
+- Elaborar un plan de implementación detallado que incluya:
+  - **Análisis de impacto**: qué módulos, archivos, funciones, clases y dependencias se ven afectados
+  - **Descomposición en subtareas**: lista ordenada de pasos de implementación, con dependencias entre ellos
+  - **Archivos a modificar/crear**: para cada paso, listar los archivos concretos y el tipo de cambio (crear, modificar, eliminar)
+  - **Consideraciones de arquitectura**: cómo se integra el cambio en la arquitectura existente, patrones a seguir, convenciones aplicables
+  - **Riesgos identificados**: posibles problemas, efectos secundarios, puntos de fricción
+  - **Estrategia de testing**: qué tipo de tests se necesitan y qué casos deben cubrir
+  - **Estrategia de versionado**: estimación del tipo de bump (MAJOR/MINOR/PATCH) si aplica
+  - **Agentes necesarios**: qué agentes especialistas deben intervenir y en qué orden
+  - **Alternativas consideradas**: otros enfoques evaluados y por qué se descartaron
+- Entregar el plan al orquestador para su revisión y aprobación
+- Actualizar el plan si el orquestador solicita modificaciones
+- Colaborar con el agente auditor cuando sea necesario verificar la viabilidad del plan
+
+**Conocimiento base**:
+- Documentación de arquitectura global (`01-architecture.md` o equivalente)
+- Matriz de módulos → agentes (`analysis/04-agent-mapping.md`)
+- Catálogo completo de agentes y sus responsabilidades
+- Documentación de patrones y convenciones del proyecto
+
+**Ámbito de actuación**:
+- **Puede modificar**: exclusivamente el plan (documento `.kilo/plans/{id}-plan.md` o similar). No modifica código fuente.
+- **No puede modificar**: ningún archivo de código fuente, configuración, tests, documentación de agentes, ni CHANGELOG
+- **Puede consultar**: cualquier agente especialista, documentación del proyecto, código fuente (solo lectura)
+
+**Protocolo de actuación**:
+
+```
+Orquestador solicita plan para petición del usuario
+  │
+  ▼
+1. ANALIZAR LA PETICIÓN: extraer requisitos, objetivos, restricciones
+2. IDENTIFICAR ÁREAS AFECTADAS: determinar qué módulos/secciones se ven impactados
+3. CONSULTAR AGENTES: solicitar a los especialistas de las secciones afectadas
+   que analicen en profundidad sus áreas y reporten:
+   - Estado actual del código relevante
+   - Posibles puntos de extensión o modificación
+   - Riesgos específicos de su sección
+   - Tests existentes que podrían verse afectados
+4. CONSULTAR APRENDIZAJE: revisar CENTRAL_ERROR_REGISTRY.md y CROSS_AGENT_INSIGHTS.md
+   para detectar antecedentes relevantes
+5. ELABORAR PLAN: estructurar el plan completo según el formato definido
+6. ENTREGAR AL ORQUESTADOR: presentar el plan para revisión
+7. REFINAR: si el orquestador solicita cambios, iterar hasta aprobación
+```
+
+**Formato del plan**:
+
+```markdown
+# Plan: {título descriptivo}
+
+> **ID**: PLAN-{YYYYMMDD}-{NNN}
+> **Fecha**: YYYY-MM-DD
+> **Origen**: {petición original del usuario}
+> **Estado**: borrador | en_revisión | aprobado | en_ejecución | completado | cancelado
+
+## 1. Análisis de impacto
+
+### Módulos afectados
+| Módulo | Tipo de afectación | Criticidad |
+|--------|-------------------|------------|
+| {nombre} | {nuevo/cambio/eliminación} | {crítica/alta/media/baja} |
+
+### Dependencias impactadas
+- Internas: {lista de dependencias entre módulos afectadas}
+- Externas: {nuevas dependencias de paquetes, cambios de versión, etc.}
+
+## 2. Plan de implementación
+
+### Paso 1: {título del paso}
+- **Archivos**: `ruta/archivo1.py` (modificar), `ruta/archivo2.py` (crear)
+- **Descripción**: qué se va a hacer y cómo
+- **Depende de**: {ninguno | paso N}
+- **Agente asignado**: {nombre del agente especialista}
+- **Consideraciones**: {convenciones, patrones, restricciones}
+
+### Paso 2: {título del paso}
+- ...
+
+## 3. Consideraciones de arquitectura
+- Patrones a aplicar
+- Convenciones a seguir
+- Restricciones tecnológicas
+- Integración con módulos existentes
+
+## 4. Riesgos identificados
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|--------|-------------|---------|------------|
+
+## 5. Estrategia de testing
+- Tests unitarios necesarios
+- Tests de integración necesarios
+- Casos límite a cubrir
+- Tests existentes que deben actualizarse
+
+## 6. Estrategia de versionado
+- Tipo de bump estimado: {MAJOR/MINOR/PATCH}
+- Justificación
+
+## 7. Agentes involucrados
+| Agente | Rol | Orden de intervención |
+|--------|-----|---------------------|
+
+## 8. Alternativas consideradas
+| Alternativa | Ventajas | Desventajas | Motivo de descarte |
+|-------------|----------|-------------|-------------------|
+
+## 9. Referencias
+- Documentación relacionada
+- Issues/PRs relacionados
+- Errores previos relacionados (CENTRAL_ERROR_REGISTRY)
+```
+
+**Regla de cesión al orquestador (OBLIGATORIA)**:
+> Si el usuario te invoca directamente, NO ejecutes ninguna acción por tu cuenta. Responde indicando que debes ceder el control al orquestador. Redirige la petición al orquestador para que evalúe y asigne la tarea al agente más adecuado. Esta regla no tiene excepciones.
+
+### 2.3 Agente especialista por sección
 
 **Definición**: Un agente por cada sección identificada en la fase 1, responsable en profundidad de esa sección.
 
@@ -135,7 +259,7 @@ Lista de archivos de documentación y código fuente que este agente DEBE leer a
 
 **Entregable**: Un documento de definición por cada agente especialista (`agents/{nombre-agente}.md`).
 
-### 2.3 Agente especialista en pruebas
+### 2.4 Agente especialista en pruebas
 
 **Definición**: Responsable exclusivo de la estrategia y ejecución de testing del proyecto.
 
@@ -153,7 +277,7 @@ Lista de archivos de documentación y código fuente que este agente DEBE leer a
 - Entrega al orquestador: resultados de tests, informe de cobertura, recomendaciones
 - Colabora con agentes especialistas para entender el comportamiento esperado de su sección
 
-### 2.4 Agente especialista en versiones y repositorio
+### 2.5 Agente especialista en versiones y repositorio
 
 **Definición**: Responsable de la gestión del repositorio git y versionado semántico.
 
@@ -181,7 +305,7 @@ Lista de archivos de documentación y código fuente que este agente DEBE leer a
 | Cambio en variables de entorno requeridas | MAJOR |
 | Deprecación de funcionalidad | MINOR |
 
-### 2.5 Agente auditor
+### 2.6 Agente auditor
 
 **Definición**: Agente transversal que utiliza al resto de agentes para analizar el código y detectar problemas.
 
@@ -205,16 +329,17 @@ Lista de archivos de documentación y código fuente que este agente DEBE leer a
 5. El orquestador asigna las correcciones a los agentes correspondientes
 6. El auditor verifica las correcciones en la siguiente auditoría
 
-### 2.6 Agente orquestador (tech lead)
+### 2.7 Agente orquestador (tech lead)
 
 **Definición**: Punto único de control y coordinación de todos los agentes.
 
 **Responsabilidades**:
 - **Ser el punto único de entrada**: toda petición del usuario debe llegar a él
 - **Analizar y descomponer**: ante cualquier petición, analizar su alcance y descomponerla en subtareas
+- **Decidir si planificar**: para peticiones complejas (múltiples módulos, cambio arquitectónico, nueva funcionalidad grande), delegar en el agente planificador la elaboración de un plan detallado antes de ejecutar
 - **Seleccionar agente(s)**: determinar qué agente(s) es/son el/los más adecuado(s) para cada subtarea, basándose en:
   - La sección afectada (→ agente especialista correspondiente)
-  - El tipo de tarea (feature → especialista, test → agente de pruebas, release → agente de versiones, revisión → auditor)
+  - El tipo de tarea (feature → especialista, test → agente de pruebas, release → agente de versiones, revisión → auditor, planificación compleja → planificador)
   - La complejidad (si abarca múltiples secciones, coordinar varios especialistas)
 - **Coordinar colaboración**: cuando una tarea cruza fronteras de sección, orquestar la comunicación entre agentes
 - **Validar resultados**: revisar que cada agente ha completado su tarea correctamente antes de integrar
@@ -235,12 +360,20 @@ Petición del usuario
   ▼
 1. ANALIZAR: ¿qué módulos/áreas se ven afectados?
 2. CONSULTAR: ¿hay antecedentes en el registro central de errores o experiencias?
-3. DESCOMPONER: dividir en subtareas independientes o secuenciales
-4. ASIGNAR: seleccionar el agente óptimo para cada subtarea
-5. COORDINAR: si hay dependencias entre subtareas, secuenciarlas
-6. VALIDAR: recibir resultados, revisar, solicitar correcciones si es necesario
-7. INTEGRAR: consolidar resultados y presentar al usuario
-8. REGISTRAR: actualizar CHANGELOG, registro de aprendizaje, y si procede, bump de versión
+3. EVALUAR COMPLEJIDAD:
+   ├─► Petición simple (1 módulo, cambio acotado) → Ir a paso 5
+   └─► Petición compleja (múltiples módulos, cambio arquitectónico, nueva funcionalidad grande) → Ir a paso 4
+4. PLANIFICAR (si procede):
+   ├─► Delegar en agente planificador
+   ├─► Revisar plan entregado
+   ├─► Solicitar refinamientos si es necesario
+   └─► Aprobar plan final
+5. DESCOMPONER: dividir en subtareas independientes o secuenciales (según plan si existe)
+6. ASIGNAR: seleccionar el agente óptimo para cada subtarea
+7. COORDINAR: si hay dependencias entre subtareas, secuenciarlas
+8. VALIDAR: recibir resultados, revisar, solicitar correcciones si es necesario
+9. INTEGRAR: consolidar resultados y presentar al usuario
+10. REGISTRAR: actualizar CHANGELOG, registro de aprendizaje, y si procede, bump de versión
 ```
 
 **Mecanismo de cesión obligatoria** (a incluir en todos los agentes no-orquestadores):
@@ -267,6 +400,10 @@ learning/
 ├── CENTRAL_ERROR_REGISTRY.md    # Registro unificado de todos los errores
 ├── CROSS_AGENT_INSIGHTS.md      # Conocimiento transversal gestionado por el orquestador
 ├── VERSION_HISTORY.md           # Historial de versiones y justificación de bumps
+├── planificador/                # Agente planificador (fijo)
+│   ├── experiences.md           # Registro cronológico de planes elaborados
+│   ├── errors.md                # Errores de planificación (pasos omitidos, riesgos no detectados)
+│   └── patterns.md              # Patrones de planificación exitosos
 └── {nombre-agente}/
     ├── experiences.md           # Registro cronológico de intervenciones
     ├── errors.md                # Catálogo de errores específicos y soluciones
@@ -278,7 +415,7 @@ learning/
 ```markdown
 ## [YYYY-MM-DD] Título descriptivo de la intervención
 
-- **Tipo**: feature | bugfix | refactor | config | doc | test | audit
+  - **Tipo**: feature | bugfix | refactor | config | doc | test | audit | plan
 - **Origen**: usuario | orquestador | auditoría | proactivo
 - **Archivos modificados**:
   - `ruta/archivo1.ext` — descripción breve del cambio
@@ -293,13 +430,15 @@ learning/
 
 ### 3.3 Formato del registro de errores (`errors.md`)
 
+Formato común a todos los agentes. Para el agente planificador, el campo **Módulo afectado** se sustituye por **Plan afectado** con el ID del plan.
+
 ```markdown
 ## [ERROR-001] Título descriptivo
 
 - **Fecha detección**: YYYY-MM-DD
 - **Detectado por**: {agente}
 - **Severidad**: crítica | alta | media | baja
-- **Módulo afectado**: {nombre del módulo}
+- **Módulo/Plan afectado**: {nombre del módulo | ID del plan}
 - **Síntomas**: descripción de lo que se observa
 - **Causa raíz**: explicación de la causa subyacente
 - **Solución**: pasos concretos para resolver
@@ -365,6 +504,16 @@ Orquestador revisa el registro
   ▼
 Próxima auditoría: el agente auditor verifica que las lecciones
 transversales se están aplicando en todas las secciones
+
+Caso especial — Agente planificador:
+  │
+  ├─► Registra en learning/planificador/experiences.md el plan aprobado
+  │   y su resultado final (éxito, desviaciones, lecciones)
+  ├─► Si se detectaron fallos en el plan (pasos omitidos, riesgos no
+  │   identificados, estimaciones incorrectas), registra en
+  │   learning/planificador/errors.md
+  └─► El orquestador evalúa si la experiencia debe promoverse a
+      CROSS_AGENT_INSIGHTS.md como patrón de planificación
 ```
 
 ---
@@ -470,6 +619,14 @@ Ref: E-001
 - Petición: "Audita el proyecto"
 - Esperado: Orquestador → auditor → auditor solicita auto-análisis a cada especialista → consolida informe → orquestador asigna correcciones → auditor verifica en siguiente ciclo
 
+**Escenario 6: Planificación de feature compleja**
+- Petición: "Añade soporte para un nuevo tipo de contenido (música)"
+- Esperado: Orquestador → evalúa complejidad (alta, múltiples módulos) → delega en planificador → planificador analiza impacto, consulta a especialistas (api, routing, torznab, categorías) → elabora plan detallado → orquestador revisa y aprueba → asigna pasos a agentes según el plan → ejecuta → pruebas valida → versiones registra
+
+**Escenario 7: Petición directa al agente planificador**
+- Petición directa: "Planifica cómo añadir cache distribuida"
+- Esperado: Planificador cede el control al orquestador → orquestador evalúa y reasigna al planificador si procede
+
 ### 5.3 Métricas de calidad del sistema de agentes
 
 | Métrica | Definición | Frecuencia de medición |
@@ -492,7 +649,8 @@ Ref: E-001
 | 1.3 | `analysis/03-modules.md` | Analista |
 | 1.4 | `analysis/04-agent-mapping.md` | Analista + futuro orquestador |
 | 1.5 | `analysis/05-documentation-audit.md` | Analista |
-| 2.1–2.6 | `agents/{nombre-agente}.md` (uno por agente) | Creador del sistema |
+| 2.2 | `agents/planificador.md` (fijo, uno por proyecto) | Creador del sistema |
+| 2.3–2.7 | `agents/{nombre-agente}.md` (uno por agente) | Creador del sistema |
 | 3.1–3.6 | `learning/` (directorio completo con subdirectorios y plantillas) | Orquestador (inicial) |
 | 4.1 | `CHANGELOG.md` (creado si no existe) | Agente de versiones |
 | 4.3 | `learning/VERSION_HISTORY.md` | Agente de versiones |
@@ -505,11 +663,12 @@ Ref: E-001
 | Riesgo | Probabilidad | Impacto | Mitigación |
 |--------|-------------|---------|-----------|
 | Solapamiento de responsabilidades entre agentes | Media | Alto | Definir fronteras precisas en la fase 1.4; el orquestador arbitra disputas y ajusta asignaciones |
-| El orquestador se convierte en cuello de botella | Media | Alto | El orquestador puede despachar tareas simples sin análisis profundo; delegar subtareas en paralelo cuando sea posible |
+| El orquestador se convierte en cuello de botella | Media | Alto | El orquestador puede despachar tareas simples sin análisis profundo; delegar subtareas en paralelo cuando sea posible; el planificador reduce carga cognitiva en tareas complejas |
+| El planificador produce planes incompletos o erróneos | Media | Alto | El orquestador revisa y aprueba todo plan antes de ejecutarlo; el auditor verifica en post-mortem la correspondencia plan↔resultado; los errores de planificación se registran en learning/planificador/errors.md |
 | Registro de aprendizaje se vuelve obsoleto o ruidoso | Alta | Medio | El agente auditor revisa y limpia periódicamente los registros; entradas sin referencias a commits se marcan como obsoletas |
 | Un agente ignora la regla de cesión al orquestador | Baja | Crítico | Incluir la regla como primera instrucción del agente; el auditor verifica en cada auditoría que no hay intervenciones no orquestadas |
 | Inconsistencia entre documentación y código | Alta | Medio | El agente auditor verifica documentación vs código; cada agente especialista es responsable de mantener actualizada la doc de su sección |
-| Agentes que alucinan información o toman decisiones incorrectas | Media | Alto | El orquestador valida resultados; el agente de pruebas ejecuta tests; el auditor revisa código generado |
+| Agentes que alucinan información o toman decisiones incorrectas | Media | Alto | El orquestador valida resultados; el agente de pruebas ejecuta tests; el auditor revisa código generado; el planificador cruza información de múltiples agentes para verificar consistencia |
 | El sistema de aprendizaje crece indefinidamente | Alta | Bajo | Archivos rotados por año; entradas antiguas movidas a `learning/archive/` por el orquestador |
 
 ---
@@ -518,11 +677,12 @@ Ref: E-001
 
 1. **Ejecutar la fase 1** (análisis completo de la aplicación)
 2. **Crear al orquestador** (necesario para todo lo demás)
-3. **Crear los agentes especialistas** según la matriz de la fase 1.4
-4. **Crear el agente de pruebas** (necesario para validar cualquier cambio)
-5. **Crear el agente de versiones** (necesario para releases y CHANGELOG)
-6. **Crear el agente auditor** (último, porque necesita que los demás existan para poder invocarlos)
-7. **Inicializar la estructura `learning/`** con plantillas vacías
-8. **Ejecutar los escenarios de verificación** (fase 5.2)
-9. **Primera auditoría** para establecer línea base
-10. **Operación normal**: el orquestador recibe peticiones y coordina
+3. **Crear al agente planificador** (fijo, necesario para tareas complejas)
+4. **Crear los agentes especialistas** según la matriz de la fase 1.4
+5. **Crear el agente de pruebas** (necesario para validar cualquier cambio)
+6. **Crear el agente de versiones** (necesario para releases y CHANGELOG)
+7. **Crear el agente auditor** (último, porque necesita que los demás existan para poder invocarlos)
+8. **Inicializar la estructura `learning/`** con plantillas vacías
+9. **Ejecutar los escenarios de verificación** (fase 5.2)
+10. **Primera auditoría** para establecer línea base
+11. **Operación normal**: el orquestador recibe peticiones y coordina

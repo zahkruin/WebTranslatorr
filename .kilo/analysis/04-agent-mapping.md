@@ -45,6 +45,7 @@
 
 ```
 Orquestador (tech-lead)
+├── planificador            # Planificación detallada de tareas complejas (fijo)
 ├── api                    # app/api/ + app/server.py + main.py
 ├── core                   # app/core/ + config.py
 ├── providers-base         # app/providers/base.py + registry.py
@@ -86,6 +87,7 @@ Orquestador (tech-lead)
 
 | Agente | Documentos de contexto obligatorios |
 |--------|-------------------------------------|
+| planificador | TODOS los documentos de contexto + analysis/ + learning/ (solo lectura, elabora planes) |
 | api | 01-architecture, 13-api-endpoints, 08-torznab-protocol, 14-deployment |
 | core | 03-data-models, 09-categories, 02-configuration, 16-known-issues |
 | providers-base | 05-providers-base, 03-data-models, 17-adding-providers |

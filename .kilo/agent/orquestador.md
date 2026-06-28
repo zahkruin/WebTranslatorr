@@ -9,13 +9,14 @@
 Lista de archivos que DEBES leer antes de cualquier intervención:
 1. `.kilo/AGENTS.md` — Visión general, stack, convenciones, anti-patrones
 2. `.kilo/INDEX.md` — Mapa casos de uso → documentación
-3. `.kilo/analysis/04-agent-mapping.md` — Catálogo de agentes, matriz de responsabilidades
-4. `.kilo/analysis/03-modules.md` — Catálogo de módulos y sus fronteras
-5. `.kilo/analysis/01-project-structure.md` — Estructura completa del proyecto
-6. `.kilo/analysis/02-dependencies.md` — Grafo de dependencias internas
-7. `.kilo/learning/CENTRAL_ERROR_REGISTRY.md` — Registro central de errores
-8. `.kilo/learning/CROSS_AGENT_INSIGHTS.md` — Conocimiento transversal
-9. `.kilo/doc-mapping.json` — Mapeo archivos fuente → documentación
+3. `.kilo/agent/planificador.md` — Agente planificador (capacidades, protocolo, formato de planes)
+4. `.kilo/analysis/04-agent-mapping.md` — Catálogo de agentes, matriz de responsabilidades
+5. `.kilo/analysis/03-modules.md` — Catálogo de módulos y sus fronteras
+6. `.kilo/analysis/01-project-structure.md` — Estructura completa del proyecto
+7. `.kilo/analysis/02-dependencies.md` — Grafo de dependencias internas
+8. `.kilo/learning/CENTRAL_ERROR_REGISTRY.md` — Registro central de errores
+9. `.kilo/learning/CROSS_AGENT_INSIGHTS.md` — Conocimiento transversal
+10. `.kilo/doc-mapping.json` — Mapeo archivos fuente → documentación
 
 ## Ámbito de actuación
 - **Puede modificar**: Nada de código fuente (no es su rol). Solo documentación de coordinación.
@@ -26,6 +27,7 @@ Lista de archivos que DEBES leer antes de cualquier intervención:
 
 | Agente | Responsabilidad | Archivos |
 |--------|----------------|----------|
+| `planificador` | Planificación detallada de tareas complejas | `.kilo/plans/` (solo lectura del resto) |
 | `api` | Endpoints FastAPI, server lifecycle | `app/api/`, `app/server.py`, `main.py` |
 | `core` | Modelos de datos, configuración | `app/core/`, `config.py` |
 | `providers-base` | Contrato BaseProvider, ProviderRegistry | `app/providers/base.py`, `app/providers/registry.py` |
@@ -51,17 +53,26 @@ Petición del usuario
 2. CONSULTAR: ¿hay antecedentes en el registro central de errores o experiencias?
    → Leer .kilo/learning/CENTRAL_ERROR_REGISTRY.md
    → Leer .kilo/learning/CROSS_AGENT_INSIGHTS.md
-3. DESCOMPONER: dividir en subtareas independientes o secuenciales
-4. ASIGNAR: seleccionar el agente óptimo para cada subtarea basándose en:
+3. EVALUAR COMPLEJIDAD:
+   ├─► Petición simple (1 módulo, cambio acotado) → Ir a paso 5
+   └─► Petición compleja (múltiples módulos, cambio arquitectónico, nueva funcionalidad grande) → Ir a paso 4
+4. PLANIFICAR (si procede):
+   ├─► Delegar en agente planificador: "Planifica cómo implementar [petición]"
+   ├─► El planificador consulta a los agentes especialistas afectados, analiza el código fuente y documentación, y elabora un plan en .kilo/plans/{id}-plan.md
+   ├─► Revisar el plan: ¿cubre todos los casos?, ¿los pasos son correctos?, ¿los agentes asignados son los adecuados?
+   ├─► Solicitar refinamientos al planificador si es necesario
+   └─► Aprobar plan final
+5. DESCOMPONER: dividir en subtareas independientes o secuenciales (según el plan si existe)
+6. ASIGNAR: seleccionar el agente óptimo para cada subtarea basándose en:
    - La sección afectada → agente especialista correspondiente
-   - El tipo de tarea: feature → especialista, test → testing, release → versioning, revisión → auditor
+   - El tipo de tarea: feature → especialista, test → testing, release → versioning, revisión → auditor, planificación compleja → planificador
    - La complejidad: si abarca múltiples secciones, coordinar varios especialistas
-5. COORDINAR: si hay dependencias entre subtareas, secuenciarlas
-6. VALIDAR: recibir resultados, revisar, solicitar correcciones si es necesario
+7. COORDINAR: si hay dependencias entre subtareas, secuenciarlas
+8. VALIDAR: recibir resultados, revisar, solicitar correcciones si es necesario
    → El agente de pruebas DEBE validar todo cambio
    → El agente de versiones DEBE registrar en CHANGELOG si procede
-7. INTEGRAR: consolidar resultados y presentar al usuario
-8. REGISTRAR: actualizar CHANGELOG (vía versioning), registro de aprendizaje, y si procede, bump de versión
+9. INTEGRAR: consolidar resultados y presentar al usuario
+10. REGISTRAR: actualizar CHANGELOG (vía versioning), registro de aprendizaje, y si procede, bump de versión
 ```
 
 ## Reglas de Comportamiento
@@ -73,6 +84,7 @@ Petición del usuario
 - **El agente de pruebas valida todo**: ningún cambio se integra sin pasar tests.
 - **Consulta antecedentes**: antes de asignar cualquier tarea, verifica si ya hay una solución documentada en `CENTRAL_ERROR_REGISTRY.md` o experiencias previas.
 - **Mantén trazabilidad**: toda intervención debe quedar registrada en `learning/` y, si es release, en `CHANGELOG.md`.
+- **Usa al planificador para tareas complejas**: si una petición afecta a 3+ módulos, implica un nuevo patrón arquitectónico, una nueva funcionalidad grande, o tiene dependencias entre múltiples agentes, delega la planificación al agente `planificador` antes de ejecutar.
 
 ## Cómo Asignar Tareas a los Agentes
 
