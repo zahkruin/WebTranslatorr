@@ -279,7 +279,7 @@ Orquestador solicita plan para petición del usuario
 
 ### 2.5 Agente especialista en versiones y repositorio
 
-**Definición**: Responsable de la gestión del repositorio git y versionado semántico.
+**Definición**: Responsable de la gestión del repositorio git, versionado semántico, y sincronización de la versión entre git tags y el código en runtime.
 
 **Responsabilidades**:
 - Ejecutar operaciones git: commits, creación de ramas, merges, tags, resolución de conflictos simples
@@ -287,10 +287,29 @@ Orquestador solicita plan para petición del usuario
   - **MAJOR**: cambios que rompen compatibilidad hacia atrás (API pública, esquema de datos, configuración)
   - **MINOR**: nuevas funcionalidades compatibles hacia atrás
   - **PATCH**: correcciones de bugs compatibles hacia atrás
+- **Sincronizar la versión con el código**: al crear un tag `vX.Y.Z`, el agente DEBE actualizar el archivo `VERSION` en la raíz del proyecto con el valor `X.Y.Z` (sin prefijo "v"). Este archivo es leído por el código en runtime (ej: `app/core/version.py`) para que la API, health checks, y metadatos reflejen siempre la versión real del despliegue.
 - Mantener `CHANGELOG.md` actualizado con cada release
 - Gestionar releases y tags
 - Garantizar integridad del historial (no commits de secretos, no archivos binarios grandes, mensajes de commit significativos)
 - Mantener `learning/VERSION_HISTORY.md` con el historial completo de versiones y justificación de cada incremento
+
+**Protocolo de sincronización de versión**:
+```
+Al crear un release:
+1. Determinar el nuevo número de versión X.Y.Z según criterios SemVer
+2. Escribir "X.Y.Z\n" en el archivo VERSION (raíz del proyecto, sin prefijo "v")
+3. Hacer commit del cambio: "chore(version): bump to X.Y.Z"
+4. Crear tag anotado: git tag -a vX.Y.Z -m "vX.Y.Z: {descripción breve}"
+5. Actualizar CHANGELOG.md con la nueva versión
+6. Actualizar learning/VERSION_HISTORY.md
+7. Push: commits + tags
+```
+
+**Archivo VERSION**:
+- Ubicación: `VERSION` (raíz del proyecto)
+- Formato: una sola línea con `MAJOR.MINOR.PATCH` (sin prefijo "v", sin saltos de línea extra)
+- Ejemplo: `0.1.2`
+- Consumido por: `app/core/version.py` (módulo `get_version()`), que es importado por `app/server.py` (metadata de FastAPI) y `app/api/health.py` (endpoint raíz `GET /`)
 
 **Criterios de decisión para el incremento de versión**:
 
@@ -627,6 +646,11 @@ Ref: E-001
 - Petición directa: "Planifica cómo añadir cache distribuida"
 - Esperado: Planificador cede el control al orquestador → orquestador evalúa y reasigna al planificador si procede
 
+**Escenario 8: Release con sincronización de versión**
+- Petición: "Versiona y sube los cambios"
+- Esperado: Orquestador → versiones determina bump → versiones actualiza `VERSION` con el nuevo número → commit → crea tag `vX.Y.Z` → actualiza CHANGELOG → actualiza VERSION_HISTORY → push
+- Verificación: `GET /` devuelve `{"version": "X.Y.Z"}` (coincide con el tag); `app.version` en FastAPI coincide
+
 ### 5.3 Métricas de calidad del sistema de agentes
 
 | Métrica | Definición | Frecuencia de medición |
@@ -636,6 +660,7 @@ Ref: E-001
 | Cobertura de tests | % de código cubierto por tests | Por cada cambio |
 | Frecuencia de auditoría | Días entre informes de auditoría | Mensual |
 | Integridad de CHANGELOG | % de releases con entrada en CHANGELOG | Por release |
+| Sincronización de versión | Coincidencia entre tag git, archivo VERSION, y `GET /` response | Por release |
 | Eficacia del aprendizaje | % de intervenciones donde la consulta pre-acción encontró antecedentes útiles | Por intervención |
 
 ---
@@ -653,6 +678,8 @@ Ref: E-001
 | 2.3–2.7 | `agents/{nombre-agente}.md` (uno por agente) | Creador del sistema |
 | 3.1–3.6 | `learning/` (directorio completo con subdirectorios y plantillas) | Orquestador (inicial) |
 | 4.1 | `CHANGELOG.md` (creado si no existe) | Agente de versiones |
+| 4.1b | `VERSION` (archivo con versión actual, creado si no existe) | Agente de versiones |
+| 4.1c | `app/core/version.py` (módulo `get_version()`, creado si no existe) | Agente de versiones |
 | 4.3 | `learning/VERSION_HISTORY.md` | Agente de versiones |
 | 5.1–5.3 | Checklist de verificación + resultados de escenarios | Orquestador + auditor |
 
