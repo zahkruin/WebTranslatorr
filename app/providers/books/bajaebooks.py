@@ -281,6 +281,68 @@ class BajaebooksProvider(BaseProvider):
 
         return None
 
+    async def browse(
+        self,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        **kwargs
+    ) -> list[SearchResult]:
+        """RSS/browse mode: scrape homepage for recent books."""
+        import re as re_mod
+        from bs4 import BeautifulSoup
+        from datetime import datetime
+
+        self.logger.info(f"Bajaebooks browse: homepage (offset={offset}, limit={limit})")
+        results = []
+        url = self.base_url
+
+        try:
+            resp = await self.http_client.get(url, use_scraper=True)
+            soup = BeautifulSoup(resp.text, 'lxml')
+
+            seen_urls = set()
+            for selector in [
+                'a[href*="/libro/"]', 'a[href*="/book/"]', 'a[href*="/descargar/"]',
+                'article a[href]', 'div.book-card a[href]', 'div.item a[href]',
+                'h2 a', 'h3 a', '.entry-title a', 'a[title]'
+            ]:
+                for a in soup.select(selector):
+                    href = a.get('href')
+                    title_text = a.get_text(strip=True) or a.get('title', '')
+                    if not href or not title_text or href in seen_urls:
+                        continue
+                    if any(word in title_text.lower() for word in ('inicio', 'contacto', 'últimos agregados', 'categoría')):
+                        continue
+                    if len(title_text) < 3 or '/' not in href:
+                        continue
+                    seen_urls.add(href)
+                    internal_id = re_mod.search(r'/([^/]+)/?$', href.rstrip('/'))
+                    internal_id = internal_id.group(1) if internal_id else None
+                    if not internal_id:
+                        continue
+                    result = SearchResult(
+                        title=title_text,
+                        guid=f"bajaebooks-{internal_id}",
+                        link=href if href.startswith('http') else f"{self.base_url}{href}",
+                        download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+                        size_bytes=1000000,
+                        pub_date=datetime.now(),
+                        categories=[7000, 7020, 8000, 8010],
+                        description=f"Libro: {title_text}",
+                    )
+                    results.append(result)
+                    if len(results) >= limit:
+                        break
+                if len(results) >= limit:
+                    break
+        except Exception as e:
+            self.logger.error(f"Bajaebooks browse error: {e}")
+
+        return results[offset:]
+
+
     @staticmethod
     def _extract_internal_id(href: str, title: str) -> str:
         """Extract internal ID from URL."""

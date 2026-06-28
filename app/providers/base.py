@@ -104,3 +104,23 @@ class BaseProvider(ABC):
     def _parse_results(self, html: str) -> list[SearchResult]:
         """Helper para parsear resultados, opcional."""
         pass
+
+    async def browse(
+        self,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        **kwargs
+    ) -> list[SearchResult]:
+        """
+        Devuelve resultados recientes sin búsqueda explícita (modo RSS).
+        
+        Usado cuando Readarr/etc envían peticiones de sincronización sin
+        query (t=book sin q=). El provider debe scrapear su página de
+        listados recientes o homepage.
+        
+        Por defecto devuelve lista vacía — los providers que soporten
+        este modo deben sobrescribir este método.
+        """
+        return []

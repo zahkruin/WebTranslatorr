@@ -153,6 +153,52 @@ class WordPressApiClient:
         results = await self.search(query, limit=1)
         return len(results) > 0
 
+    async def list_recent(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[SearchResult]:
+        """
+        List most recent posts via WordPress REST API (no search query).
+
+        Used for RSS/browse mode when *Arr apps sync without a search term.
+        Drops the `search=` parameter so the API returns newest posts first.
+        """
+        page = (offset // self._per_page) + 1 if offset else 1
+        per_page = min(limit, self._per_page)
+
+        api_url = (
+            f"{self._base_url}/wp-json/wp/v2/posts"
+            f"?per_page={per_page}"
+            f"&page={page}"
+            f"&_embed"
+        )
+
+        logger.debug(f"[{self._provider_id}] Recent posts: {api_url}")
+
+        try:
+            resp = await self._http.get(api_url, use_scraper=self._requires_scraper)
+            raw = json.loads(resp.text) if isinstance(resp.text, str) else []
+            posts = raw if isinstance(raw, list) else []
+        except Exception as e:
+            logger.error(f"[{self._provider_id}] API recent posts failed: {e}")
+            return []
+
+        results = []
+        for post in posts:
+            try:
+                result = self._post_to_search_result(post)
+                if result:
+                    results.append(result)
+            except Exception as e:
+                logger.warning(f"[{self._provider_id}] Failed to map post {post.get('id')}: {e}")
+
+        if offset and page == 1:
+            results = results[offset % self._per_page:]
+
+        return results[:limit]
+
     # ── private helpers ─────────────────────────────────────────
 
     def _post_to_search_result(self, post: dict) -> Optional[SearchResult]:

@@ -117,3 +117,54 @@ class HolaEbookProvider(BaseProvider):
             self.logger.error(f"Error obteniendo download url de {internal_id}: {e}")
 
         return None
+
+    async def browse(
+        self,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        **kwargs
+    ) -> list[SearchResult]:
+        """RSS/browse mode: scrape homepage for recent books."""
+        import re as re_mod
+        from bs4 import BeautifulSoup
+        from datetime import datetime
+
+        self.logger.info(f"HolaEbook browse: homepage (offset={offset}, limit={limit})")
+        results = []
+        url = self.base_url
+
+        try:
+            resp = await self.http_client.get(url, use_scraper=True)
+            soup = BeautifulSoup(resp.text, 'lxml')
+
+            seen_urls = set()
+            for a in soup.select('a[href*="/libro"], a[href*="/book"]'):
+                href = a.get('href')
+                title_text = a.get_text(strip=True)
+                if not href or not title_text or href in seen_urls:
+                    continue
+                seen_urls.add(href)
+                parts = [p for p in href.rstrip('/').split('/') if p and p not in ('libro', 'book')]
+                internal_id = parts[-1].replace('.html', '') if parts else None
+                if not internal_id:
+                    continue
+                result = SearchResult(
+                    title=title_text,
+                    guid=f"holaebook-{internal_id}",
+                    link=href if href.startswith('http') else f"{self.base_url}{href}",
+                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+                    size_bytes=1000000,
+                    pub_date=datetime.now(),
+                    categories=[7000, 7020, 8000, 8010],
+                    description=f"Libro: {title_text}",
+                )
+                results.append(result)
+                if len(results) >= limit:
+                    break
+        except Exception as e:
+            self.logger.error(f"HolaEbook browse error: {e}")
+
+        return results[offset:]
+

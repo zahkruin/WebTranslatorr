@@ -217,22 +217,51 @@ async def _handle_torznab_request(
             logging.error(f"Provider {provider.provider_id} error: {e}")
             return []
 
-    tasks = [
-        search_with_cache(
-            provider,
-            query=q,
-            categories=parsed_cats,
-            offset=offset,
-            limit=limit,
-            imdb_id=imdbid or None,
-            tvdb_id=int(tvdbid) if tvdbid and tvdbid.isdigit() else None,
-            season=int(season) if season and season.isdigit() else None,
-            episode=int(ep) if ep and ep.isdigit() else None,
-            author=author or None,
-            title=title or None,
-        )
-        for provider in providers
-    ]
+    # Determinar si es una búsqueda real o un RSS sync sin query.
+    # Readarr envía t=book sin q= para sincronización periódica (RSS feed).
+    # En ese caso usamos browse() para devolver listados recientes en lugar
+    # de search() que requiere query.
+    has_query = bool(q and q.strip()) or bool(author and author.strip()) or bool(title and title.strip())
+
+    if has_query:
+        tasks = [
+            search_with_cache(
+                provider,
+                query=q,
+                categories=parsed_cats,
+                offset=offset,
+                limit=limit,
+                imdb_id=imdbid or None,
+                tvdb_id=int(tvdbid) if tvdbid and tvdbid.isdigit() else None,
+                season=int(season) if season and season.isdigit() else None,
+                episode=int(ep) if ep and ep.isdigit() else None,
+                author=author or None,
+                title=title or None,
+            )
+            for provider in providers
+        ]
+    else:
+        # RSS sync mode: browse recent listings from each provider
+        logging.info(f"RSS sync — browsing recent listings from {len(providers)} providers")
+
+        async def browse_provider(provider):
+            try:
+                return await asyncio.wait_for(
+                    provider.browse(
+                        categories=parsed_cats,
+                        offset=offset,
+                        limit=limit,
+                    ),
+                    timeout=SEARCH_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logging.warning(f"Provider {provider.provider_id} browse timed out")
+                return []
+            except Exception as e:
+                logging.error(f"Provider {provider.provider_id} browse error: {e}")
+                return []
+
+        tasks = [browse_provider(provider) for provider in providers]
 
     results_lists = await asyncio.gather(*tasks)
 

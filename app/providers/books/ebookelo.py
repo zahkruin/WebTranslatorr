@@ -277,3 +277,23 @@ class EbookeloProvider(BaseProvider):
             self.logger.error(f"Error resolviendo URL de descarga: {e}")
 
         return download_url
+
+    async def browse(
+        self,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        **kwargs
+    ) -> list[SearchResult]:
+        """RSS/browse mode: scrape homepage for recent books using _parse_results."""
+        self.logger.info(f"Ebookelo browse: homepage scrape (offset={offset}, limit={limit})")
+        url = f"{self.base_url}/"
+        try:
+            resp = await self.http_client.get(url)
+            results = self._parse_results(resp.text)
+        except Exception as e:
+            self.logger.error(f"Ebookelo browse error: {e}")
+            return []
+        return results[offset:offset + limit]
+

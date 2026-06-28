@@ -230,6 +230,64 @@ class LeLibrosProvider(BaseProvider):
 
         return None
 
+    async def browse(
+        self,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        **kwargs
+    ) -> list[SearchResult]:
+        """RSS/browse mode: scrape homepage for recent books."""
+        import re as re_mod
+        from bs4 import BeautifulSoup
+        from datetime import datetime
+
+        self.logger.info(f"LeLibros browse: homepage (offset={offset}, limit={limit})")
+        results = []
+        url = self.base_url
+
+        try:
+            resp = await self.http_client.get(url, use_scraper=True)
+            soup = BeautifulSoup(resp.text, 'lxml')
+
+            seen_urls = set()
+            for selector in ['article a[href]', 'div.entry-content a[href]', 'div.book a[href]',
+                             'a[href*="/libro/"]', 'a[href*="/book/"]', '.entry-title a',
+                             'h2 a', 'h3 a']:
+                for a in soup.select(selector):
+                    href = a.get('href')
+                    title_text = a.get_text(strip=True)
+                    if not href or not title_text or href in seen_urls:
+                        continue
+                    if len(title_text) < 5 or '/' not in href:
+                        continue
+                    seen_urls.add(href)
+                    internal_id = re_mod.search(r'/([^/]+)/?$', href.rstrip('/'))
+                    internal_id = internal_id.group(1) if internal_id else None
+                    if not internal_id or internal_id in ('libro', 'book', self.base_url.rstrip('/').split('/')[-1]):
+                        continue
+                    result = SearchResult(
+                        title=title_text,
+                        guid=f"lelibros-{internal_id}",
+                        link=href if href.startswith('http') else f"{self.base_url}{href}",
+                        download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+                        size_bytes=1000000,
+                        pub_date=datetime.now(),
+                        categories=[7000, 7020, 8000, 8010],
+                        description=f"Libro: {title_text}",
+                    )
+                    results.append(result)
+                    if len(results) >= limit:
+                        break
+                if len(results) >= limit:
+                    break
+        except Exception as e:
+            self.logger.error(f"LeLibros browse error: {e}")
+
+        return results[offset:]
+
+
     @staticmethod
     def _extract_internal_id(href: str, title: str) -> str:
         """Extract internal ID from URL or generate from title."""

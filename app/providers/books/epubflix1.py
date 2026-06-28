@@ -171,3 +171,19 @@ class Epubflix1Provider(BaseProvider):
 
         self.logger.warning(f"No se encontró enlace de descarga para {internal_id} en {fmt}")
         return None
+
+    async def browse(
+        self,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        **kwargs
+    ) -> list[SearchResult]:
+        """RSS/browse mode: return most recent books via WordPress API."""
+        self.logger.info(f"Epubflix1 browse: recent posts (offset={offset}, limit={limit})")
+        try:
+            return await self._api.list_recent(limit=limit, offset=offset)
+        except Exception as e:
+            self.logger.warning(f"Epubflix1 browse API error: {e}")
+            return []

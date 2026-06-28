@@ -302,3 +302,19 @@ class EpubgratisProvider(BaseProvider):
         # Fallback
         slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')
         return slug or title.replace(' ', '-').lower()
+
+    async def browse(
+        self,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        **kwargs
+    ) -> list[SearchResult]:
+        """RSS/browse mode: return most recent books via WordPress API."""
+        self.logger.info(f"Epubgratis browse: recent posts (offset={offset}, limit={limit})")
+        try:
+            return await self._api.list_recent(limit=limit, offset=offset)
+        except Exception as e:
+            self.logger.warning(f"Epubgratis browse API error: {e}")
+            return []

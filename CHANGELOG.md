@@ -58,7 +58,22 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 ### Added
 - **Filtrado server-side por categorías**: `_handle_torznab_request()` ahora filtra resultados que no coinciden con las categorías solicitadas (`cat=`), evitando que resultados de video contaminen respuestas de búsqueda de libros y viceversa
 
+## [0.1.4] — 2026-06-28
+
+### Added
+- **Modo RSS/browse**: 11 providers de libros ahora soportan devolver listados recientes cuando Readarr envía peticiones de sincronización sin query (`t=book` sin `q=`), eliminando el error "Query successful, but no results in the configured categories" en syncs periódicos
+- **Método `browse()` en BaseProvider**: nuevo método opcional que los providers pueden sobrescribir para devolver resultados recientes sin búsqueda explícita
+- **`list_recent()` en WordPressApiClient**: consulta `/wp-json/wp/v2/posts` sin `search=` para devolver posts recientes vía API (usado por Epubflix1, LectuEpubLibre5, Epubgratis)
+- **Scrapeo de homepage**: EpubLibre, Espaebook, HolaEbook, B00k.Bond, MundoEpubLibre1, LeLibros, Bajaebooks y Ebookelo ahora scrapean su página principal cuando no hay query
+
+### Changed
+- **`_handle_torznab_request()`**: detecta peticiones RSS sin query y usa `browse()` en lugar de `search()`, evitando que los 16 providers retornen vacío en syncs de Readarr
+
 ## [Unreleased]
+
+---
+
+> **Última actualización**: 2026-06-28 — v0.1.4 con modo RSS/browse para syncs de Readarr.
 
 ---
 
