@@ -69,6 +69,11 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 ### Changed
 - **`_handle_torznab_request()`**: detecta peticiones RSS sin query y usa `browse()` en lugar de `search()`, evitando que los 16 providers retornen vacío en syncs de Readarr
 
+## [0.1.5] — 2026-06-28
+
+### Added
+- **Modo browse en 5 providers restantes**: Lectulandia (homepage /book/), Ebiblioteca (catálogo homepage), Library Genesis (/last.php), Anna's Archive (homepage /md5/), Z-Library (homepage cards + fallback /book/) — completando los 16 providers de libros con soporte RSS/browse
+
 ## [Unreleased]
 
 ---

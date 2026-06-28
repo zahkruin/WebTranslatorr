@@ -177,3 +177,53 @@ class LectulandiaProvider(BaseProvider):
                     return f"{self.base_url}{href}"
                 return href
         return None
+
+    async def browse(
+        self,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        **kwargs
+    ) -> list[SearchResult]:
+        """RSS/browse mode: scrape Lectulandia homepage for recent books."""
+        import re as re_mod
+        from bs4 import BeautifulSoup
+        from datetime import datetime
+
+        self.logger.info(f"Lectulandia browse: homepage (offset={offset}, limit={limit})")
+        results = []
+        url = f"{self.base_url}/"
+
+        try:
+            resp = await self.http_client.get(url, use_scraper=True)
+            soup = BeautifulSoup(resp.text, 'lxml')
+
+            seen_urls = set()
+            for a in soup.select('a[href*="/book/"]'):
+                href = a.get('href')
+                title_text = a.get_text(strip=True)
+                if not href or not title_text or title_text.lower() == 'libros' or href in seen_urls:
+                    continue
+                seen_urls.add(href)
+                match = re_mod.search(r'/book/([^/]+)/', href)
+                internal_id = match.group(1) if match else None
+                if not internal_id:
+                    continue
+                result = SearchResult(
+                    title=title_text,
+                    guid=f"lectulandia-{internal_id}",
+                    link=f"{self.base_url}{href}" if href.startswith('/') else href,
+                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+                    size_bytes=1000000,
+                    pub_date=datetime.now(),
+                    categories=[7000, 7020, 8000, 8010],
+                    description=f"Libro: {title_text}",
+                )
+                results.append(result)
+                if len(results) >= limit:
+                    break
+        except Exception as e:
+            self.logger.error(f"Lectulandia browse error: {e}")
+
+        return results[offset:]

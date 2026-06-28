@@ -378,3 +378,109 @@ class EbibliotecaProvider(BaseProvider):
         except ValueError:
             pass
         return 0
+
+    async def browse(
+        self,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        **kwargs
+    ) -> list[SearchResult]:
+        """RSS/browse mode: scrape Ebiblioteca homepage (catalog listing)."""
+        from bs4 import BeautifulSoup
+        from datetime import datetime
+
+        self.logger.info(f"Ebiblioteca browse: homepage catalog (offset={offset}, limit={limit})")
+        results = []
+        url = f"{self.base_url}/"
+
+        try:
+            resp = await self.http_client.get(url, use_scraper=True)
+            if resp.status_code != 200 or len(resp.text) < 500:
+                self.logger.warning("Ebiblioteca browse: homepage returned empty/short response")
+                return []
+
+            soup = BeautifulSoup(resp.text, 'lxml')
+            seen_ids = set()
+
+            # Reuse the same comprehensive selectors from search()
+            selectors = [
+                'a[href*="/libro/"]',
+                'a[href*="/book/"]',
+                'a[href*="/descargar/"]',
+                'a[href*="/read/"]',
+                'a[href*="/id/"]',
+                'div.card a[href]',
+                'div.item a[href]',
+                'div[class*="book"] a[href]',
+                'div[class*="libro"] a[href]',
+                'table a[href]',
+                'h2 a', 'h3 a',
+            ]
+
+            for selector in selectors:
+                for link in soup.select(selector):
+                    href = link.get('href', '')
+                    title_text = link.get_text(strip=True)
+                    if not href or not title_text or len(title_text) < 3:
+                        continue
+                    if any(skip in href.lower() for skip in [
+                        '/category/', '/author/', '/autor/', '/tag/',
+                        '/page/', '/genero/', '/genre/', '/editorial/',
+                        '/login', '/registro', '/register',
+                        'javascript:', 'mailto:', '#',
+                    ]):
+                        continue
+                    if title_text.lower() in (
+                        'inicio', 'home', 'biblioteca', 'contacto',
+                        'autores', 'títulos', 'titulos', 'géneros', 'generos',
+                        'novedades', 'favoritos', 'leer más', 'leer mas',
+                        'ir a la descarga', 'completar', 'descargar',
+                    ):
+                        continue
+
+                    internal_id = self._extract_internal_id(href, title_text)
+                    if internal_id in seen_ids:
+                        continue
+                    seen_ids.add(internal_id)
+
+                    if href.startswith('/'):
+                        link_full = f"{self.base_url}{href}"
+                    elif not href.startswith('http'):
+                        link_full = f"{self.base_url}/{href}"
+                    else:
+                        link_full = href
+
+                    author_text = self._extract_author_from_context(link)
+                    genre_text = self._extract_genre_from_context(link)
+                    size_text = self._extract_size_from_context(link)
+                    size_bytes = self._parse_size(size_text)
+
+                    description_parts = [f"Libro: {title_text}"]
+                    if author_text:
+                        description_parts.append(f"Autor: {author_text}")
+                    if genre_text:
+                        description_parts.append(f"Género: {genre_text}")
+
+                    result = SearchResult(
+                        title=title_text,
+                        guid=f"ebiblioteca-{internal_id}",
+                        link=link_full,
+                        download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+                        size_bytes=size_bytes or 3000000,
+                        pub_date=datetime.now(),
+                        categories=[7000, 7020, 8000, 8010],
+                        description=" | ".join(description_parts),
+                        author=author_text or None,
+                        extra_attrs={"genre": genre_text} if genre_text else {},
+                    )
+                    results.append(result)
+                    if len(results) >= limit:
+                        break
+                if len(results) >= limit:
+                    break
+        except Exception as e:
+            self.logger.error(f"Ebiblioteca browse error: {e}")
+
+        return results[offset:]

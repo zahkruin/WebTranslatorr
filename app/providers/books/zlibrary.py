@@ -246,3 +246,109 @@ class ZLibraryProvider(BaseProvider):
 
         self.logger.warning(f"No se encontró enlace de descarga para {internal_id} en {fmt}")
         return None
+
+    async def browse(
+        self,
+        categories: list[int] = None,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        **kwargs
+    ) -> list[SearchResult]:
+        """RSS/browse mode: scrape Z-Library homepage for featured/recent books."""
+        import re as re_mod
+        from bs4 import BeautifulSoup
+        from datetime import datetime
+
+        self.logger.info(f"Z-Library browse: homepage (offset={offset}, limit={limit})")
+        results = []
+        url = f"{self.base_url}/"
+
+        try:
+            resp = await self.http_client.get(url, use_scraper=True)
+            if resp.status_code != 200 or len(resp.text) < 500:
+                self.logger.warning("Z-Library browse: homepage returned empty/short response")
+                return []
+
+            soup = BeautifulSoup(resp.text, 'lxml')
+            seen_ids = set()
+
+            # Method 1: card-based layouts (same as search)
+            for card in soup.select('div[class*="book"], div[class*="card"], article, div[class*="result"]'):
+                link = card.find('a', href=True)
+                if not link:
+                    continue
+                href = link.get('href', '')
+                book_id = None
+                id_match = re_mod.search(r'/book/(\d+)', href)
+                if id_match:
+                    book_id = id_match.group(1)
+                if not book_id or book_id in seen_ids:
+                    continue
+                seen_ids.add(book_id)
+
+                title_elem = card.find(['h2', 'h3', 'h4', 'h5', 'span', 'div'],
+                                       class_=re_mod.compile(r'title|name|book', re_mod.I))
+                if not title_elem:
+                    title_elem = link
+                title_text = title_elem.get_text(strip=True)
+                if not title_text or len(title_text) < 3:
+                    continue
+
+                author_elem = card.find(['span', 'div', 'p', 'small'],
+                                        class_=re_mod.compile(r'auth', re_mod.I))
+                author_text = author_elem.get_text(strip=True) if author_elem else ""
+
+                ext_elem = card.find(['span', 'div', 'small'],
+                                     class_=re_mod.compile(r'format|ext|type', re_mod.I))
+                extension = ext_elem.get_text(strip=True).lower() if ext_elem else "epub"
+                extension = re_mod.sub(r'[^a-z0-9]', '', extension)
+                if extension not in ('epub', 'mobi', 'pdf', 'azw3', 'fb2', 'djvu', 'txt'):
+                    extension = 'epub'
+
+                result = SearchResult(
+                    title=f"{title_text} - {author_text}" if author_text else title_text,
+                    guid=f"zlibrary-{book_id}",
+                    link=href if href.startswith('http') else f"{self.base_url}{href}",
+                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={book_id}&fmt={extension}",
+                    size_bytes=1000000,
+                    pub_date=datetime.now(),
+                    categories=[7000, 7020, 8000, 8010],
+                    description=f"Libro: {title_text} | Autor: {author_text} | Formato: {extension}",
+                    author=author_text or None,
+                    extra_attrs={"format": extension},
+                )
+                results.append(result)
+                if len(results) >= limit:
+                    break
+
+            # Method 2: Fallback — any /book/ links
+            if not results:
+                seen_urls = set()
+                for a in soup.select('a[href*="/book/"]'):
+                    href = a.get('href', '')
+                    title_text = a.get_text(strip=True)
+                    if not title_text or len(title_text) < 3 or href in seen_urls:
+                        continue
+                    seen_urls.add(href)
+                    id_match = re_mod.search(r'/book/(\d+)', href)
+                    book_id = id_match.group(1) if id_match else None
+                    if not book_id:
+                        continue
+                    result = SearchResult(
+                        title=title_text,
+                        guid=f"zlibrary-{book_id}",
+                        link=href if href.startswith('http') else f"{self.base_url}{href}",
+                        download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={book_id}&fmt=epub",
+                        size_bytes=1000000,
+                        pub_date=datetime.now(),
+                        categories=[7000, 7020, 8000, 8010],
+                        description=f"Libro: {title_text}",
+                    )
+                    results.append(result)
+                    if len(results) >= limit:
+                        break
+        except Exception as e:
+            self.logger.error(f"Z-Library browse error: {e}")
+
+        return results[offset:]
