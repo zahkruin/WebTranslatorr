@@ -261,6 +261,32 @@ async def _handle_torznab_request(
         )
 
     # Aplicar paginación
+    total_before_filter = len(all_results)
+
+    # Filtrar resultados por categorías solicitadas (server-side).
+    # Readarr filtra client-side, pero un filtro server-side evita que
+    # resultados de categorías no solicitadas (ej: video en búsqueda de
+    # libros) contaminen la respuesta y causen "no results in configured
+    # categories" en el lado del cliente.
+    if parsed_cats:
+        filtered = []
+        filtered_out = []
+        for r in all_results:
+            if any(
+                c in parsed_cats or (c // 1000 * 1000) in parsed_cats
+                for c in r.categories
+            ):
+                filtered.append(r)
+            else:
+                filtered_out.append(r)
+        if filtered_out:
+            logging.debug(
+                f"Category filter: removed {len(filtered_out)} results "
+                f"(categories {set(c for r in filtered_out for c in r.categories)} "
+                f"not in requested {parsed_cats})"
+            )
+        all_results = filtered
+
     total = len(all_results)
     paginated = all_results[offset:offset + limit]
 

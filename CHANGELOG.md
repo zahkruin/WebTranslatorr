@@ -49,8 +49,17 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 ### Added
 - Tests para el endpoint multi-indexer `/api/{provider_id}`: CAPS con/sin API key, CAPS con nombre personalizado, búsqueda con API key inválida, provider desconocido, y verificación de que el endpoint agregado no incluye nombres de provider
 
+## [0.1.3] — 2026-06-28
+
+### Fixed
+- **Categorías de libros unificadas**: los 15 providers de libros que taggeaban resultados con `categories=[7020]` ahora usan `[7000, 7020, 8000, 8010]` para cubrir ambos rangos Newznab (Books y Books alt), eliminando el error "Query successful, but no results in the configured categories" que Readarr mostraba cuando filtraba por el rango 8000/8010
+- **Default category en SearchResult**: cambiado de `[8010]` a `[7000, 7020, 8000, 8010]` para consistencia con los providers y máxima compatibilidad con Readarr
+
+### Added
+- **Filtrado server-side por categorías**: `_handle_torznab_request()` ahora filtra resultados que no coinciden con las categorías solicitadas (`cat=`), evitando que resultados de video contaminen respuestas de búsqueda de libros y viceversa
+
 ## [Unreleased]
 
 ---
 
-> **Última actualización**: 2026-06-28 — v0.1.2 con personalización de nombres de indexer.
+> **Última actualización**: 2026-06-28 — v0.1.3 con fix de categorías Readarr.

@@ -179,7 +179,7 @@ class EbibliotecaProvider(BaseProvider):
                         download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
                         size_bytes=size_bytes or 3000000,
                         pub_date=datetime.now(),
-                        categories=[7020],
+                        categories=[7000, 7020, 8000, 8010],
                         description=" | ".join(description_parts),
                         author=author_text or None,
                         extra_attrs={"genre": genre_text} if genre_text else {},

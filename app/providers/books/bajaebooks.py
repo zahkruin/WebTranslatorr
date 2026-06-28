@@ -174,7 +174,7 @@ class BajaebooksProvider(BaseProvider):
                         download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
                         size_bytes=1500000,
                         pub_date=datetime.now(),
-                        categories=[7020],
+                        categories=[7000, 7020, 8000, 8010],
                         description=f"Libro: {title_text}" + (f" | Autor: {author_text}" if author_text else ""),
                         author=author_text or None,
                     )

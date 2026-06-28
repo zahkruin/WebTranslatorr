@@ -16,7 +16,7 @@ class SearchResult:
     download_url: str
     size_bytes: int = 0
     pub_date: datetime = field(default_factory=datetime.now)
-    categories: list[int] = field(default_factory=lambda: [8010])
+    categories: list[int] = field(default_factory=lambda: [7000, 7020, 8000, 8010])
     description: str = ""
 
     # Campos opcionales según tipo de contenido

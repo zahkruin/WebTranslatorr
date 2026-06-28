@@ -27,7 +27,7 @@ class TestSearchResult:
         assert result.title == "Test"
         assert result.size_bytes == 0
         assert isinstance(result.pub_date, datetime)
-        assert result.categories == [8010]
+        assert result.categories == [7000, 7020, 8000, 8010]
         assert result.description == ""
         assert result.author is None
         assert result.imdb_id is None
