@@ -2,6 +2,8 @@
 
 from xml.etree.ElementTree import Element, SubElement, tostring
 
+from config import settings
+
 
 class CapsGenerator:
 
@@ -24,12 +26,14 @@ class CapsGenerator:
         # Construir XML
         caps = Element("caps")
 
-        # Server info
+        # Server info — use configured external URL so *Arr apps can reach us
+        external_url = settings.EXTERNAL_URL.rstrip("/") + "/"
+
         SubElement(caps, "server", attrib={
             "version": "1.0",
             "title": "WebTranslatorr",
             "strapline": "Universal Torznab Proxy",
-            "url": "http://localhost:9811/",
+            "url": external_url,
         })
 
         # Limits

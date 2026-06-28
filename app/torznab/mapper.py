@@ -5,6 +5,8 @@ con Torznab/Newznab, consumible por Sonarr, Radarr y Readarr.
 from xml.etree.ElementTree import Element, SubElement, tostring
 from datetime import datetime
 
+from config import settings
+
 TORZNAB_NS = "http://torznab.com/schemas/2015/feed"
 NEWZNAB_NS = "http://www.newznab.com/DTD/2010/feeds/attributes/"
 
@@ -26,10 +28,13 @@ class TorznabMapper:
             "xmlns:newznab": NEWZNAB_NS,
         })
 
+        # Use configured external URL so *Arr apps can follow links
+        external_url = settings.EXTERNAL_URL.rstrip("/")
+
         channel = SubElement(rss, "channel")
         SubElement(channel, "title").text = channel_title
         SubElement(channel, "description").text = "Universal Torznab Proxy"
-        SubElement(channel, "link").text = "http://localhost:9811"
+        SubElement(channel, "link").text = external_url
 
         # Atributo de respuesta con paginación
         SubElement(channel, "newznab:response", attrib={

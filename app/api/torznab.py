@@ -297,9 +297,21 @@ async def torznab_api(
     """
     # Validar API key
     if not _validate_apikey(apikey):
+        # t=caps sin API key: devolver caps básicas para permitir
+        # que las *Arr apps detecten el servicio (como hace Jackett)
+        if t and t.lower() == "caps":
+            capabilities = [p.get_capabilities() for p in registry.get_all()]
+            xml = CapsGenerator.generate(capabilities)
+            return Response(content=xml, media_type="application/xml")
+        
+        error_xml = TorznabErrors.incorrect_api_key()
+        error_headers = TorznabErrors.error_headers(
+            TorznabErrors.INCORRECT_API_KEY, "Incorrect API Key"
+        )
         return Response(
-            content=TorznabErrors.incorrect_api_key(),
-            media_type="application/xml"
+            content=error_xml,
+            media_type="application/xml",
+            headers=error_headers,
         )
 
     # t=caps → devolver capabilities agregadas de todos los providers
@@ -416,9 +428,25 @@ async def provider_torznab_api(
     """
     # Validar API key
     if not _validate_apikey(apikey):
+        # t=caps sin API key: permitir detección del servicio
+        if t and t.lower() == "caps":
+            provider_id_lower = provider_id.lower()
+            try:
+                provider = registry.get(provider_id_lower)
+                capabilities = [provider.get_capabilities()]
+                xml = CapsGenerator.generate(capabilities)
+                return Response(content=xml, media_type="application/xml")
+            except Exception:
+                pass
+        
+        error_xml = TorznabErrors.incorrect_api_key()
+        error_headers = TorznabErrors.error_headers(
+            TorznabErrors.INCORRECT_API_KEY, "Incorrect API Key"
+        )
         return Response(
-            content=TorznabErrors.incorrect_api_key(),
-            media_type="application/xml"
+            content=error_xml,
+            media_type="application/xml",
+            headers=error_headers,
         )
 
     # Obtener el provider específico

@@ -239,12 +239,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Include routers — providers must come before torznab so
-    # /api/providers (literal) is matched before /api/{provider_id} (dynamic)
+    # Include routers — order matters! FastAPI matches routes in registration order.
+    # /api/providers and /api/domains must be registered BEFORE torznab, because
+    # torznab.router has a catch-all /api/{provider_id} dynamic route that would
+    # intercept "/api/domains" and "/api/providers" path segments before the
+    # dedicated routers get a chance to respond.
     app.include_router(health.router)
     app.include_router(providers.router)
-    app.include_router(torznab.router)
     app.include_router(domains.router)
+    app.include_router(torznab.router)
 
     return app
 

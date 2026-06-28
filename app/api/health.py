@@ -9,6 +9,22 @@ from app.providers.registry import registry
 router = APIRouter()
 
 
+@router.get("/")
+async def root():
+    """
+    Root endpoint: used by *Arr apps for basic connectivity checks.
+    Returns a simple JSON response so Readarr/Radarr/Sonarr can detect
+    the service is alive before attempting Torznab API calls.
+    """
+    return {
+        "service": "WebTranslatorr",
+        "version": "1.0.0",
+        "type": "torznab",
+        "docs": "/api?t=caps",
+        "health": "/health",
+    }
+
+
 @router.get("/health")
 async def health_check(brief: bool = Query(False, description="Brief mode: just status")):
     """

@@ -29,13 +29,19 @@ class TestCapsEndpoint:
     """Tests for t=caps via the /api endpoint."""
 
     def test_caps_returns_xml_with_wrong_api_key(self):
-        """Should return error XML when api key is wrong."""
+        """Should return caps XML even with wrong API key (Jackett-compatible behavior).
+        
+        Like Jackett, WebTranslatorr now allows t=caps without a valid API key
+        so *Arr apps can discover the indexer before authentication is configured.
+        Search/download operations still require a valid API key.
+        """
         app = FastAPI()
         app.include_router(torznab.router)
         client = TestClient(app)
         response = client.get("/api?t=caps&apikey=wrong")
         assert response.status_code == 200
-        assert "error" in response.text.lower() or "incorrect" in response.text.lower()
+        assert "caps" in response.text.lower()
+        # No error — caps is returned for service discovery
 
     def test_caps_returns_xml_with_valid_key(self):
         """Should return capabilities XML with valid API key."""
