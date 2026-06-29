@@ -16,7 +16,9 @@
 | 0.1.5 | 2026-06-28 | PATCH | Modo browse en 5 providers restantes (Lectulandia, Ebiblioteca, Library Genesis, Anna's Archive, Z-Library). | — |
 | 0.1.6 | 2026-06-28 | PATCH | Generación de archivos .torrent para descargas de libros (compatibilidad Readarr). | — |
 | 0.1.7 | 2026-06-29 | PATCH | Documentación: URLs por provider en README, tabla de categorías por app. | — |
+| 0.2.0 | 2026-06-29 | MINOR | Translation Pipeline: cascada 4 fases inglés→español (caché SQLite + Wikidata + Google Books + TitleCleaner). Integrado en búsqueda Torznab. Nueva dependencia `aiosqlite`. 6 nuevas variables de entorno (prefijo `WTR_`). | versioning |
+| 0.2.1 | 2026-06-29 | PATCH | Documentación de variables de entorno del Translation Pipeline en `.env.example`. El pipeline no se estaba ejecutando porque `WTR_TRANSLATION_PIPELINE_SEARCH_ENABLED` tiene default `false` y no estaba documentado. | versioning |
 
 ---
 
-> **Última actualización**: 2026-06-29 (release v0.1.7 — docs de URLs por provider)
+> **Última actualización**: 2026-06-29 (release v0.2.1 — fix documentación Translation Pipeline env vars)

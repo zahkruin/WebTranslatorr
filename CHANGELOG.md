@@ -7,13 +7,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
-
-
-### Added
-
-
+## [0.2.1] — 2026-06-29
 
 ### Fixed
+- **Translation Pipeline no documentado**: añadidas 5 variables de entorno (`WTR_TRANSLATION_PIPELINE_SEARCH_ENABLED`, `WTR_TRANSLATION_PIPELINE_WIKIDATA_ENABLED`, `WTR_TRANSLATION_PIPELINE_GOOGLE_BOOKS_ENABLED`, `WTR_GOOGLE_BOOKS_API_KEY`, `WTR_TRANSLATION_PIPELINE_TIMEOUT`) a `.env.example` con comentarios explicativos. La variable maestra `WTR_TRANSLATION_PIPELINE_SEARCH_ENABLED` tiene default `false` en `config.py:96`, por lo que sin esta documentación los usuarios no sabían que el pipeline existía ni cómo activarlo.
 
 ## [0.2.0] — 2026-06-29
 
