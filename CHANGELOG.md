@@ -5,7 +5,9 @@ Todos los cambios notables de este proyecto se documentarán en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] — 2026-06-28
+## [Unreleased]
+
+
 
 ### Added
 - 6 nuevos providers (4 books + 2 video): Epubgratis (books), Ebiblioteca (books), Bajaebooks (books), LeLibros (books), DivxTotal (video), EliteTorrent (video)
@@ -74,12 +76,16 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 ### Added
 - **Modo browse en 5 providers restantes**: Lectulandia (homepage /book/), Ebiblioteca (catálogo homepage), Library Genesis (/last.php), Anna's Archive (homepage /md5/), Z-Library (homepage cards + fallback /book/) — completando los 16 providers de libros con soporte RSS/browse
 
-## [Unreleased]
+## [0.1.7] — 2026-06-29
+
+### Changed
+- **README**: sección "Uso en *Arr Apps" reescrita con tabla de URLs específicas por provider (8 providers), categorías exactas y separación Readarr / Radarr+Sonarr
+
+## [0.1.6] — 2026-06-28
+
+### Added
+- Generación de archivos .torrent para descargas de libros (compatibilidad Readarr)
 
 ---
 
-> **Última actualización**: 2026-06-28 — v0.1.4 con modo RSS/browse para syncs de Readarr.
-
----
-
-> **Última actualización**: 2026-06-28 — v0.1.3 con fix de categorías Readarr.
+> **Última actualización**: 2026-06-29 — v0.1.7 con docs de URLs por provider.

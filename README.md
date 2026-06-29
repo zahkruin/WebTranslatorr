@@ -62,11 +62,29 @@ python main.py
 
 ## Uso en *Arr Apps
 
-Configura como indexer Torznab:
+Configura como indexer Torznab. Puedes usar el endpoint multi-indexer (`/api`) o apuntar directamente a un provider específico (`/api/{provider_id}`).
 
-- **URL**: `http://localhost:9811/api`
-- **API Key**: La que hayas configurado en `WTR_API_KEY`
-- **Categories**: 7000-8999 (libros), 2000-2999 (películas), 5000-5999 (TV)
+### Readarr (Libros)
+
+| Provider | URL | Categories |
+|---|---|---|
+| EpubLibre | `http://localhost:9811/api/epublibre?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+| Lectulandia | `http://localhost:9811/api/lectulandia?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+| HolaEbook | `http://localhost:9811/api/holaebook?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+| Espaebook | `http://localhost:9811/api/espaebook?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+| Anna's Archive | `http://localhost:9811/api/annasarchive?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+| Ebookelo | `http://localhost:9811/api/ebookelo?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+| **Todos (multi)** | `http://localhost:9811/api?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+
+### Radarr / Sonarr (Películas y Series)
+
+| Provider | URL | Categories |
+|---|---|---|
+| MejorTorrent | `http://localhost:9811/api/mejortorrent?apikey=TU_KEY` | Movies: 2000, 2030, 2040, 2045<br>TV: 5000, 5030, 5040, 5045 |
+| DonTorrent | `http://localhost:9811/api/dontorrent?apikey=TU_KEY` | Movies: 2000, 2030, 2040, 2045<br>TV: 5000, 5030, 5040 |
+| **Todos (multi)** | `http://localhost:9811/api?apikey=TU_KEY` | Movies: 2000-2999<br>TV: 5000-5999 |
+
+> **Nota**: DonTorrent viene deshabilitado por defecto (`DONTORRENT_ENABLED=false`).
 
 ## Endpoints
 
