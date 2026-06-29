@@ -289,6 +289,10 @@ async def _handle_torznab_request(
         logging.warning(
             f"Search '{q}' → 0 results. All {len(providers)} providers returned empty: {provider_stats}"
         )
+        # Log individual provider failures for diagnostics
+        empty_providers = [pid for pid, count in provider_stats.items() if isinstance(count, int) and count == 0]
+        if empty_providers:
+            logging.warning(f"Providers returning 0 results: {', '.join(empty_providers)}")
 
     # Aplicar paginación
     total_before_filter = len(all_results)

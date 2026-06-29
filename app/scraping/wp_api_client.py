@@ -284,7 +284,7 @@ class WordPressApiClient:
             download_url=download_url,
             size_bytes=size_bytes,
             pub_date=pub_date,
-            categories=[7020],  # Ebook
+            categories=[7000, 7020, 8000, 8010],
             description=description,
             author=author,
         )

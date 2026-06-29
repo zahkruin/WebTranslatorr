@@ -56,13 +56,27 @@ class CapsGenerator:
 
         # Searching capabilities
         searching = SubElement(caps, "searching")
+
+        # Derive supported params from provider capabilities (not hardcoded)
+        book_params = set()
+        movie_params = set()
+        tv_params = set()
+        for p in providers:
+            book_params.update(p.supported_search_params)
+            movie_params.update(p.supported_search_params)
+            tv_params.update(p.supported_search_params)
+
+        # Always include "q" for search (all providers support it)
+        # Add author and title if any book provider declares them
+        book_params.add("q")
+
         SubElement(searching, "search", attrib={
             "available": "yes",
             "supportedParams": "q",
         })
         SubElement(searching, "book-search", attrib={
             "available": "yes" if supports_book else "no",
-            "supportedParams": "q,author,title",
+            "supportedParams": ",".join(sorted(book_params)),
         })
         SubElement(searching, "tv-search", attrib={
             "available": "yes" if supports_tv else "no",

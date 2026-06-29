@@ -74,6 +74,10 @@ Configura como indexer Torznab. Puedes usar el endpoint multi-indexer (`/api`) o
 | Espaebook | `http://localhost:9811/api/espaebook?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
 | Anna's Archive | `http://localhost:9811/api/annasarchive?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
 | Ebookelo | `http://localhost:9811/api/ebookelo?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+| Epubgratis | `http://localhost:9811/api/epubgratis?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+| Ebiblioteca | `http://localhost:9811/api/ebiblioteca?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+| Bajaebooks | `http://localhost:9811/api/bajaebooks?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
+| LeLibros | `http://localhost:9811/api/lelibros?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
 | **Todos (multi)** | `http://localhost:9811/api?apikey=TU_KEY` | 7000, 7020, 8000, 8010 |
 
 ### Radarr / Sonarr (Películas y Series)
