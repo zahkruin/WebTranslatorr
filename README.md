@@ -18,12 +18,31 @@ Compatible con: Readarr, Sonarr, Radarr, y cualquier app que soporte Torznab.
 
 ## Instalación
 
-### Docker Compose (Recomendado)
+### docker-compose.prod.yml (Producción, sin clonar el repo)
 
-La imagen oficial de Docker se compila y aloja automáticamente en el Registro de Contenedores de GitHub (`ghcr.io`).
+El fichero `docker-compose.prod.yml` es autocontenido: descárgalo y lánzalo directamente desde `ghcr.io`. No necesitas clonar el repositorio ni crear un `.env` manualmente.
+
+```bash
+# 1. Descarga el compose de producción
+wget https://raw.githubusercontent.com/zahkruin/WebTranslatorr/main/docker-compose.prod.yml
+
+# 2. Configura tu API Key (mínimo imprescindible)
+export WTR_API_KEY="tu_api_key_segura"
+
+# 3. Arranca
+docker compose -f docker-compose.prod.yml up -d
+```
+
+> Puedes sobreescribir cualquier variable con `export WTR_XXX=valor` o creando un fichero `.env` en el mismo directorio que el compose. Todas las variables tienen defaults razonables (salvo `WTR_API_KEY` que usa `changeme`).
+
+### Docker Compose (Desarrollo / build local)
+
+Para desarrollo o si prefieres compilar la imagen localmente (requiere clonar el repo):
 
 1. **Clonar y Preparar el entorno:**
    ```bash
+   git clone https://github.com/zahkruin/WebTranslatorr.git
+   cd WebTranslatorr
    cp .env.example .env
    ```
 2. **Configurar tu API Key:**
@@ -36,18 +55,18 @@ La imagen oficial de Docker se compila y aloja automáticamente en el Registro d
 
 3. **Desplegar:**
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
 ### Docker Run (Sin Compose)
 
-Si no usas `docker-compose`, puedes descargar la imagen pre-compilada directamente y ejecutarla pasándole tus variables o el archivo `.env`:
+Si no usas `docker compose`, puedes ejecutar la imagen pre-compilada:
 
 ```bash
 docker run -d \
   --name webtranslatorr \
   -p 9811:9811 \
-  --env-file .env \
+  -e WTR_API_KEY="tu_api_key_segura" \
   -v ./data:/app/data \
   ghcr.io/zahkruin/webtranslatorr:latest
 ```

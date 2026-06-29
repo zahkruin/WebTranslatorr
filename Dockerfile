@@ -16,8 +16,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar código fuente
 COPY . .
 
+# Incluir .env.example como referencia para usuarios de la imagen prebuilt
+COPY .env.example /app/.env.example
+
 # Puerto expuesto
 EXPOSE 9811
 
-# Comando de inicio
-CMD ["python", "main.py"]
+# Comando de inicio: crea directorio data/ si no existe y arranca la app
+CMD ["sh", "-c", "mkdir -p /app/data && python main.py"]

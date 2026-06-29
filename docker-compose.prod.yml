@@ -1,0 +1,102 @@
+# WebTranslatorr — Production deployment with ghcr.io prebuilt image
+# Usage:
+#   1. Download this single file (no need to clone the repo):
+#        wget https://raw.githubusercontent.com/zahkruin/WebTranslatorr/main/docker-compose.prod.yml
+#   2. Set WTR_API_KEY (at minimum):
+#        export WTR_API_KEY="your-secure-key"
+#   3. Start:
+#        docker compose -f docker-compose.prod.yml up -d
+#   4. Override any variable below by setting it in the environment
+#      or creating an .env file next to this compose file.
+
+services:
+  webtranslatorr:
+    image: ghcr.io/zahkruin/webtranslatorr:latest
+    container_name: webtranslatorr
+    ports:
+      - "${WTR_PORT:-9811}:9811"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    environment:
+      # Server
+      WTR_HOST: ${WTR_HOST:-0.0.0.0}
+      WTR_PORT: ${WTR_PORT:-9811}
+      WTR_API_KEY: ${WTR_API_KEY:-changeme}
+      WTR_LOG_LEVEL: ${WTR_LOG_LEVEL:-INFO}
+      WTR_EXTERNAL_URL: ${WTR_EXTERNAL_URL:-http://localhost:9811}
+
+      # Provider enable/disable
+      WTR_EBOOKELO_ENABLED: ${WTR_EBOOKELO_ENABLED:-true}
+      WTR_EPUBLIBRE_ENABLED: ${WTR_EPUBLIBRE_ENABLED:-true}
+      WTR_LECTULANDIA_ENABLED: ${WTR_LECTULANDIA_ENABLED:-true}
+      WTR_ESPAEBOOK_ENABLED: ${WTR_ESPAEBOOK_ENABLED:-true}
+      WTR_HOLAEBOOK_ENABLED: ${WTR_HOLAEBOOK_ENABLED:-true}
+      WTR_ELEJANDRIA_ENABLED: ${WTR_ELEJANDRIA_ENABLED:-false}
+      WTR_ANNASARCHIVE_ENABLED: ${WTR_ANNASARCHIVE_ENABLED:-true}
+      WTR_GUTENBERG_ENABLED: ${WTR_GUTENBERG_ENABLED:-true}
+      WTR_MEJORTORRENT_ENABLED: ${WTR_MEJORTORRENT_ENABLED:-true}
+      WTR_DONTORRENT_ENABLED: ${WTR_DONTORRENT_ENABLED:-false}
+      WTR_EPUBFLIX1_ENABLED: ${WTR_EPUBFLIX1_ENABLED:-true}
+      WTR_LIBGEN_ENABLED: ${WTR_LIBGEN_ENABLED:-true}
+      WTR_BOOOBOOK_ENABLED: ${WTR_BOOOBOOK_ENABLED:-true}
+      WTR_LECTUEPUBLIBRE5_ENABLED: ${WTR_LECTUEPUBLIBRE5_ENABLED:-true}
+      WTR_MUNDOEPUBLIBRE1_ENABLED: ${WTR_MUNDOEPUBLIBRE1_ENABLED:-true}
+      WTR_ZLIBRARY_ENABLED: ${WTR_ZLIBRARY_ENABLED:-true}
+      WTR_EPUBGRATIS_ENABLED: ${WTR_EPUBGRATIS_ENABLED:-true}
+      WTR_EBIBLIOTECA_ENABLED: ${WTR_EBIBLIOTECA_ENABLED:-true}
+      WTR_BAJAEEBOOKS_ENABLED: ${WTR_BAJAEEBOOKS_ENABLED:-true}
+      WTR_LELIBROS_ENABLED: ${WTR_LELIBROS_ENABLED:-true}
+      WTR_DIVXTOTAL_ENABLED: ${WTR_DIVXTOTAL_ENABLED:-false}
+      WTR_ELITETORRENT_ENABLED: ${WTR_ELITETORRENT_ENABLED:-false}
+
+      # Provider domains
+      WTR_MEJORTORRENT_DOMAIN: ${WTR_MEJORTORRENT_DOMAIN:-https://www42.mejortorrent.eu}
+      WTR_DONTORRENT_DOMAIN: ${WTR_DONTORRENT_DOMAIN:-https://dontorrent.reisen}
+      WTR_EBOOKELO_DOMAIN: ${WTR_EBOOKELO_DOMAIN:-https://ww2.ebookelo.com}
+      WTR_EPUBLIBRE_DOMAIN: ${WTR_EPUBLIBRE_DOMAIN:-https://epublibre.bid}
+      WTR_LECTULANDIA_DOMAIN: ${WTR_LECTULANDIA_DOMAIN:-https://ww3.lectulandia.co}
+      WTR_ESPAEBOOK_DOMAIN: ${WTR_ESPAEBOOK_DOMAIN:-https://espaebook.cc}
+      WTR_HOLAEBOOK_DOMAIN: ${WTR_HOLAEBOOK_DOMAIN:-https://holaebook.com}
+      WTR_ELEJANDRIA_DOMAIN: ${WTR_ELEJANDRIA_DOMAIN:-https://www.elejandria.com}
+      WTR_ANNASARCHIVE_DOMAIN: ${WTR_ANNASARCHIVE_DOMAIN:-https://annas-archive.org}
+      WTR_GUTENBERG_DOMAIN: ${WTR_GUTENBERG_DOMAIN:-https://gutenberg.org}
+      WTR_EPUBFLIX1_DOMAIN: ${WTR_EPUBFLIX1_DOMAIN:-https://epubflix1.com}
+      WTR_LIBGEN_DOMAIN: ${WTR_LIBGEN_DOMAIN:-https://libgen.ee}
+      WTR_BOOOBOOK_DOMAIN: ${WTR_BOOOBOOK_DOMAIN:-https://es.booobook.bond}
+      WTR_LECTUEPUBLIBRE5_DOMAIN: ${WTR_LECTUEPUBLIBRE5_DOMAIN:-https://lectuepublibre5.com}
+      WTR_MUNDOEPUBLIBRE1_DOMAIN: ${WTR_MUNDOEPUBLIBRE1_DOMAIN:-https://mundoepublibre1.com}
+      WTR_ZLIBRARY_DOMAIN: ${WTR_ZLIBRARY_DOMAIN:-https://z-library.sk}
+      WTR_EPUBGRATIS_DOMAIN: ${WTR_EPUBGRATIS_DOMAIN:-https://www.epubgratis.org}
+      WTR_EBIBLIOTECA_DOMAIN: ${WTR_EBIBLIOTECA_DOMAIN:-https://ebiblioteca.org}
+      WTR_BAJAEEBOOKS_DOMAIN: ${WTR_BAJAEEBOOKS_DOMAIN:-https://bajaebooks.info}
+      WTR_LELIBROS_DOMAIN: ${WTR_LELIBROS_DOMAIN:-https://lelibros.online}
+      WTR_DIVXTOTAL_DOMAIN: ${WTR_DIVXTOTAL_DOMAIN:-https://divxtotal.wtf}
+      WTR_ELITETORRENT_DOMAIN: ${WTR_ELITETORRENT_DOMAIN:-https://www.elitetorrent.com}
+
+      # TMDB API
+      WTR_TMDB_API_KEY: ${WTR_TMDB_API_KEY:-}
+
+      # Scraping
+      WTR_RATE_LIMIT_PER_SECOND: ${WTR_RATE_LIMIT_PER_SECOND:-2.0}
+      WTR_MAX_RETRIES: ${WTR_MAX_RETRIES:-3}
+      WTR_REQUEST_TIMEOUT: ${WTR_REQUEST_TIMEOUT:-30}
+
+      # Cache
+      WTR_CACHE_ENABLED: ${WTR_CACHE_ENABLED:-true}
+      WTR_CACHE_TTL_SECONDS: ${WTR_CACHE_TTL_SECONDS:-300}
+
+      # Domain resolution
+      WTR_DOMAIN_CHECK_INTERVAL: ${WTR_DOMAIN_CHECK_INTERVAL:-1800}
+      WTR_DOMAIN_VALIDATION_TIMEOUT: ${WTR_DOMAIN_VALIDATION_TIMEOUT:-10}
+
+      # Translation Pipeline
+      WTR_TRANSLATION_PIPELINE_SEARCH_ENABLED: ${WTR_TRANSLATION_PIPELINE_SEARCH_ENABLED:-false}
+      WTR_TRANSLATION_PIPELINE_WIKIDATA_ENABLED: ${WTR_TRANSLATION_PIPELINE_WIKIDATA_ENABLED:-true}
+      WTR_TRANSLATION_PIPELINE_GOOGLE_BOOKS_ENABLED: ${WTR_TRANSLATION_PIPELINE_GOOGLE_BOOKS_ENABLED:-true}
+      WTR_GOOGLE_BOOKS_API_KEY: ${WTR_GOOGLE_BOOKS_API_KEY:-}
+      WTR_TRANSLATION_PIPELINE_TIMEOUT: ${WTR_TRANSLATION_PIPELINE_TIMEOUT:-10}
+      WTR_TRANSLATION_CACHE_PATH: ${WTR_TRANSLATION_CACHE_PATH:-}
+
+      # Proxy
+      WTR_HTTP_PROXY: ${WTR_HTTP_PROXY:-}
