@@ -52,6 +52,7 @@ from app.providers.video.divxtotal import DivxtotalProvider
 from app.providers.video.elitetorrent import EliteTorrentProvider
 from app.routing.smart_router import smart_router
 from app.utils.zip_extractor import ZipExtractor
+from app.utils.torrent_generator import generate_torrent
 from app.torznab.mapper import TorznabMapper
 from app.torznab.caps import CapsGenerator
 from app.torznab.errors import TorznabErrors
@@ -410,11 +411,18 @@ async def download_proxy(
     """
     Proxy de descarga. Los *Arr llaman a este endpoint cuando
     el usuario selecciona un resultado.
+
+    Para book providers (no-video), genera un archivo .torrent
+    on-the-fly que envuelve el EPUB/PDF/MOBI con un web seed.
+    Readarr espera siempre un archivo .torrent válido de los
+    indexers Torznab y falla si recibe otro tipo de archivo.
     """
     try:
         prov = registry.get(provider)
-        
-        # Retrocompatibilidad con providers antiguos que esperaban id/fmt
+
+        caps = prov.get_capabilities()
+        is_video = caps.supports_movie_search or caps.supports_tv_search
+
         internal_id = id if provider != "ebookelo" else f"{id}/{fmt}"
 
         final_url = await prov.get_download_url(internal_id, fmt=fmt)
@@ -422,11 +430,78 @@ async def download_proxy(
         if not final_url:
             raise Exception("No URL found")
 
-        # Descargar el archivo. Usar scraper en caso de Anna's o webs bloqueadas
         http_client = _get_http_client()
         file_bytes = await http_client.download_file(final_url, use_scraper=getattr(prov, 'is_zipped', False) or provider == "annasarchive")
 
-        # Extracción on-the-fly si el provider devuelve ZIPs pero queremos el EPUB
+        if getattr(prov, 'is_zipped', False):
+            extracted = ZipExtractor.extract_epub_from_memory(file_bytes)
+            if extracted:
+                file_bytes = extracted
+                fmt = "epub"
+
+        if is_video:
+            return Response(
+                content=file_bytes,
+                media_type="application/x-bittorrent",
+                headers={
+                    "Content-Disposition": 'attachment; filename="download.torrent"'
+                }
+            )
+
+        ext = fmt if fmt in ("epub", "mobi", "pdf") else "epub"
+        file_name = f"{prov.display_name}_{id}.{ext}"
+
+        web_seed_url = (
+            f"{settings.EXTERNAL_URL.rstrip('/')}/api/download-content"
+            f"?provider={provider}&id={id}&fmt={fmt}"
+        )
+
+        torrent_bytes, info_hash, magnet_uri = generate_torrent(
+            file_name=file_name,
+            file_data=file_bytes,
+            web_seed_url=web_seed_url,
+            comment=f"WebTranslatorr book download: {prov.display_name}",
+        )
+
+        return Response(
+            content=torrent_bytes,
+            media_type="application/x-bittorrent",
+            headers={
+                "Content-Disposition": f'attachment; filename="{file_name}.torrent"'
+            }
+        )
+    except Exception as e:
+        logging.error(f"Error en descarga: {e}")
+        return Response(
+            content=TorznabErrors.server_error(str(e)),
+            media_type="application/xml"
+        )
+
+
+@router.get("/api/download-content")
+async def download_content(
+    provider: str = Query(..., description="ID del provider"),
+    id: str = Query(..., description="ID interno del contenido"),
+    fmt: str = Query("epub", description="Formato del archivo"),
+):
+    """
+    Endpoint interno para el web seed del torrent.
+    Devuelve el contenido real (EPUB/PDF/MOBI) para que
+    el cliente torrent lo descargue via web seed.
+    """
+    try:
+        prov = registry.get(provider)
+
+        internal_id = id if provider != "ebookelo" else f"{id}/{fmt}"
+
+        final_url = await prov.get_download_url(internal_id, fmt=fmt)
+
+        if not final_url:
+            raise Exception("No URL found")
+
+        http_client = _get_http_client()
+        file_bytes = await http_client.download_file(final_url, use_scraper=getattr(prov, 'is_zipped', False) or provider == "annasarchive")
+
         if getattr(prov, 'is_zipped', False):
             extracted = ZipExtractor.extract_epub_from_memory(file_bytes)
             if extracted:
@@ -437,18 +512,19 @@ async def download_proxy(
             "epub": "application/epub+zip",
             "mobi": "application/x-mobipocket-ebook",
             "pdf": "application/pdf",
-            "torrent": "application/x-bittorrent",
         }
+
+        ext = fmt if fmt in ("epub", "mobi", "pdf") else "epub"
 
         return Response(
             content=file_bytes,
             media_type=content_types.get(fmt, "application/octet-stream"),
             headers={
-                "Content-Disposition": f'attachment; filename="download.{fmt}"'
+                "Content-Disposition": f'attachment; filename="download.{ext}"'
             }
         )
     except Exception as e:
-        logging.error(f"Error en descarga: {e}")
+        logging.error(f"Error en descarga de contenido: {e}")
         return Response(
             content=TorznabErrors.server_error(str(e)),
             media_type="application/xml"

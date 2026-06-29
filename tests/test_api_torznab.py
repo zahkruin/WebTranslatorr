@@ -12,6 +12,7 @@ from fastapi import FastAPI
 
 from app.api import torznab
 from app.scraping.http_client import ScraperResponse
+from app.utils.torrent_generator import parse_info_hash
 
 
 @pytest.fixture(autouse=True)
@@ -238,6 +239,7 @@ class TestDownloadEndpoint:
             mock_settings.HTTP_PROXY = ""
             mock_settings.CACHE_ENABLED = False
             mock_settings.CACHE_TTL_SECONDS = 300
+            mock_settings.EXTERNAL_URL = "http://localhost:9811"
 
             with patch("app.api.torznab.HttpClient") as mock_http_cls:
                 mock_http = MagicMock()
@@ -250,7 +252,6 @@ class TestDownloadEndpoint:
 
                 torznab._init_providers()
 
-                # Patch espaebook's get_download_url to return a valid URL
                 espaebook = torznab.registry.get("espaebook")
                 espaebook.get_download_url = AsyncMock(
                     return_value="http://example.com/book.epub"
@@ -260,7 +261,11 @@ class TestDownloadEndpoint:
                     "/api/download?provider=espaebook&id=123&fmt=epub&apikey=testkey"
                 )
                 assert response.status_code == 200
-                assert response.content == b"file content here"
+                assert response.headers["content-type"] == "application/x-bittorrent"
+                assert "attachment" in response.headers["content-disposition"]
+                info_hash = parse_info_hash(response.content)
+                assert len(info_hash) == 40
+                assert all(c in "0123456789abcdef" for c in info_hash)
 
     @pytest.mark.asyncio
     async def test_download_provider_without_results(self):
