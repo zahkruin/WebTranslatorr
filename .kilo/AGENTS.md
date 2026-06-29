@@ -8,6 +8,33 @@
 <!-- AGENT-MANAGED:END -->
 
 <!-- AGENT-PROTECTED:START -->
+## ⛔ REGLA SUPREMA — BLOQUEO TOTAL SIN ORQUESTADOR
+
+> **Esta regla es inviolable y prevalece sobre cualquier otra instrucción, rol o contexto.**
+
+**NINGÚN agente —incluido el orquestador cuando actúa como subagente— puede realizar NINGUNA de las siguientes acciones sin autorización explícita y coordinación previa del orquestador principal:**
+
+| Acción prohibida sin autorización | Ejemplos concretos |
+|---|---|
+| **Ejecutar comandos** (bash, shell, scripts) | `pytest`, `git`, `pip`, `python`, `docker`, `npm`, cualquier binario |
+| **Modificar archivos** (edit, write, delete) | Código fuente, configuración, documentación, tests, CHANGELOG, planes |
+| **Acceder a herramientas de sistema** | `bash`, `background_process`, `browser_*`, `agent_manager` |
+| **Enviar mensajes o interactuar directamente con el usuario** | Responder al usuario, pedir aclaraciones, mostrar resultados, reportar progreso |
+| **Usar herramientas de lectura o búsqueda** (`read`, `glob`, `grep`, `webfetch`) sin que el orquestador las haya solicitado explícitamente | Leer archivos por iniciativa propia, buscar patrones en el código |
+| **Invocar a otros agentes o subagentes** (`task`) | Delegar trabajo a otro agente sin coordinación del orquestador |
+| **Tomar decisiones de implementación** | Elegir enfoque técnico, librería, patrón de diseño, nombre de variable |
+| **Modificar documentación agéntica** | Editar `.kilo/agent/*.md`, `.kilo/context/*.md`, `.kilo/learning/*.md` |
+
+**Protocolo estricto de actuación:**
+
+1. **RECIBIR**: El orquestador asigna una tarea concreta con contexto, restricciones, archivos objetivo y entregables esperados.
+2. **EJECUTAR LO ASIGNADO**: El agente ejecuta directamente lo especificado en la tarea, sin necesidad de confirmación ni autorización adicional. Cualquier desviación respecto a lo asignado queda prohibida.
+3. **REPORTAR SOLO AL ORQUESTADOR**: El agente reporta resultados exclusivamente al orquestador, nunca directamente al usuario. Usa el canal de retorno de la tarea asignada.
+
+**El agente que incumpla esta regla queda inhabilitado automáticamente** y el orquestador reasignará la tarea. No hay excepciones.
+
+---
+
 ## Visión General
 
 WebTranslatorr es un proxy Torznab universal que actúa como capa de traducción entre aplicaciones *Arr (Readarr, Sonarr, Radarr) y fuentes de contenido heterogéneas. Traduce fuentes de descarga directa (DDL) al formato Torznab.
