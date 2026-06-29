@@ -87,5 +87,13 @@ class Settings(BaseSettings):
     # Proxy (opcional)
     HTTP_PROXY: str = ""
 
+    # Translation Pipeline
+    TRANSLATION_CACHE_PATH: str = ""
+    TRANSLATION_PIPELINE_TIMEOUT: int = 10
+    GOOGLE_BOOKS_API_KEY: str = ""
+    TRANSLATION_PIPELINE_WIKIDATA_ENABLED: bool = True
+    TRANSLATION_PIPELINE_GOOGLE_BOOKS_ENABLED: bool = True
+    TRANSLATION_PIPELINE_SEARCH_ENABLED: bool = False
+
 
 settings = Settings()

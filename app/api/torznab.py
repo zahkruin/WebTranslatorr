@@ -222,13 +222,37 @@ async def _handle_torznab_request(
     # Readarr envía t=book sin q= para sincronización periódica (RSS feed).
     # En ese caso usamos browse() para devolver listados recientes en lugar
     # de search() que requiere query.
+
+    # ---- Translation Pipeline integration (Phase 8) ----
+    from app.services.translation_pipeline import get_translation_pipeline
+
+    effective_q = q
+    if q and q.strip() and parsed_cats:
+        from app.core.categories import CategoryMapper
+        is_book_search = any(7000 <= c <= 8999 for c in parsed_cats)
+        is_generic_search = len(parsed_cats) == 0 and not imdbid and not tvdbid
+
+        if is_book_search or is_generic_search:
+            try:
+                translation_pipeline = await get_translation_pipeline()
+                if translation_pipeline is not None:
+                    result = await translation_pipeline.translate(q, author or None)
+                    if result is not None:
+                        effective_q = result.title_es
+                        logging.info(
+                            f"Translation: '%s' -> '%s' (source=%s, confidence=%s)",
+                            q, effective_q, result.source, result.confidence
+                        )
+            except Exception as e:
+                logging.warning(f"Translation pipeline error (using original query): {e}")
+
     has_query = bool(q and q.strip()) or bool(author and author.strip()) or bool(title and title.strip())
 
     if has_query:
         tasks = [
             search_with_cache(
                 provider,
-                query=q,
+                query=effective_q,
                 categories=parsed_cats,
                 offset=offset,
                 limit=limit,
@@ -281,13 +305,13 @@ async def _handle_torznab_request(
     # Log diagnóstico: cuántos resultados devolvió cada provider
     if all_results:
         logging.info(
-            f"Search '{q}' → {len(all_results)} total results from "
+            f"Search '{effective_q}' → {len(all_results)} total results from "
             f"{sum(1 for v in provider_stats.values() if isinstance(v, int) and v > 0)}/"
             f"{len(providers)} providers: {provider_stats}"
         )
     else:
         logging.warning(
-            f"Search '{q}' → 0 results. All {len(providers)} providers returned empty: {provider_stats}"
+            f"Search '{effective_q}' → 0 results. All {len(providers)} providers returned empty: {provider_stats}"
         )
         # Log individual provider failures for diagnostics
         empty_providers = [pid for pid, count in provider_stats.items() if isinstance(count, int) and count == 0]

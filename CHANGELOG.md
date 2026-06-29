@@ -15,7 +15,13 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Fixed
 
+## [0.2.0] — 2026-06-29
 
+### Added
+- **Translation Pipeline**: sistema de cascada de 4 fases para traducción de títulos de libros (inglés → español) con fallback silencioso. Fases: (1) Caché local SQLite con hashing SHA-256, (2) Wikidata SPARQL lookup gratuito, (3) Google Books API, (4) TitleCleaner post-procesamiento. Nuevo módulo `app/services/translation_pipeline.py` (737 LOC, 6 clases, 45 tests unitarios).
+- **Nueva dependencia**: `aiosqlite>=0.20.0` para caché persistente de traducciones.
+- **Nuevas variables de configuración**: `TRANSLATION_CACHE_PATH`, `TRANSLATION_PIPELINE_TIMEOUT`, `GOOGLE_BOOKS_API_KEY`, `TRANSLATION_PIPELINE_WIKIDATA_ENABLED`, `TRANSLATION_PIPELINE_GOOGLE_BOOKS_ENABLED` (todas con defaults seguros, prefijo `WTR_`).
+- **Integración en búsqueda**: el TranslationPipeline se integra en el endpoint de búsqueda Torznab (`/api`). Cuando `TRANSLATION_PIPELINE_SEARCH_ENABLED=true`, las queries de libros (categorías 7000-8999) se traducen automáticamente de inglés a español antes de enviarse a los providers. El pipeline se inicializa como singleton en el lifespan de FastAPI. Nueva variable `TRANSLATION_PIPELINE_SEARCH_ENABLED` (default `false`).
 
 ## [0.1.3] — 2026-06-29
 
@@ -94,4 +100,4 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ---
 
-> **Última actualización**: 2026-06-29 — v0.1.7 con docs de URLs por provider.
+> **Última actualización**: 2026-06-29 — v0.2.0 con Translation Pipeline.

@@ -194,6 +194,12 @@ async def lifespan(app: FastAPI):
     # Initialize providers using the resolver
     torznab._init_providers(resolver)
 
+    # Initialize TranslationPipeline singleton (if enabled)
+    from app.services.translation_pipeline import get_translation_pipeline
+    pipeline = await get_translation_pipeline()
+    if pipeline is not None:
+        logger.info("TranslationPipeline enabled and initialised for search integration")
+
     # Initial domain resolution at startup
     logger.info("Running initial domain resolution...")
     resolved = await resolver.resolve_all()
@@ -213,6 +219,9 @@ async def lifespan(app: FastAPI):
         await check_task
     except asyncio.CancelledError:
         pass
+    # Shutdown TranslationPipeline
+    from app.services.translation_pipeline import shutdown_translation_pipeline
+    await shutdown_translation_pipeline()
     await http_client.close()
     logger.info("Shutdown complete")
 
