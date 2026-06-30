@@ -373,9 +373,10 @@ class WikidataClient:
 
         query = (
             "SELECT ?item ?label_es WHERE {"
-            f"  ?item rdfs:label \"{escaped_title}\"@en."
-            f"  {author_clause}"
             "  ?item wdt:P31/wdt:P279* wd:Q571."
+            f"  ?item rdfs:label ?label_en."
+            f"  FILTER(LANG(?label_en) = \"en\" && REGEX(STR(?label_en), \"{escaped_title}\", \"i\"))"
+            f"  {author_clause}"
             "  ?item rdfs:label ?label_es."
             '  FILTER(LANG(?label_es) = "es")'
             "} LIMIT 5"
@@ -644,6 +645,35 @@ class TranslationPipeline:
     # Public API
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _title_variants(title: str) -> list[str]:
+        """Generate search variants for a book title.
+
+        Tries the original, strips leading articles, and adds "The".
+        Handles combined "Title Author" queries from Readarr t=search.
+        """
+        variants = [title]
+        lower = title.lower().strip()
+        if lower.startswith("the "):
+            variants.append(title[4:].strip())
+        else:
+            variants.append("The " + title.strip())
+        words = lower.split()
+        if len(words) >= 3:
+            for split_at in range(len(words) - 1, 1, -1):
+                head = " ".join(words[:split_at])
+                if lower.startswith("the ") and len(head) > 3:
+                    variants.append(head[4:].strip())
+                variants.append(head.strip())
+        seen = set()
+        unique = []
+        for v in variants:
+            key = v.lower()
+            if key not in seen and key.strip():
+                seen.add(key)
+                unique.append(v)
+        return unique
+
     async def translate(
         self, title_en: str, author: Optional[str] = None
     ) -> Optional[TranslationResult]:
@@ -662,59 +692,64 @@ class TranslationPipeline:
         if not title_en or not title_en.strip():
             return None
 
+        variants = self._title_variants(title_en)
+
         # ---- Phase 1: Local cache ------------------------------------
         if self._cache is not None:
-            try:
-                result = await self._cache.get(title_en, author)
-                if result is not None:
-                    self._logger.debug(
-                        "Cache hit for '%s' by %s", title_en, author
-                    )
-                    return result
-            except Exception as exc:
-                self._logger.warning("Cache lookup error: %s", exc)
+            for variant in variants:
+                try:
+                    result = await self._cache.get(variant, author)
+                    if result is not None:
+                        self._logger.debug(
+                            "Cache hit for '%s' by %s", variant, author
+                        )
+                        return result
+                except Exception as exc:
+                    self._logger.warning("Cache lookup error: %s", exc)
 
         # ---- Phase 2: Wikidata ---------------------------------------
         if self._wikidata is not None:
-            try:
-                title_es = await self._wikidata.get_spanish_title(
-                    title_en, author
-                )
-                if title_es is not None and title_es.strip():
-                    if self._cache is not None:
-                        await self._cache.set(
-                            title_en, author, title_es, "wikidata", 0.95
-                        )
-                    return TranslationResult(
-                        title_es=title_es, source="wikidata", confidence=0.95
+            for variant in variants:
+                try:
+                    title_es = await self._wikidata.get_spanish_title(
+                        variant, author
                     )
-            except Exception as exc:
-                self._logger.warning("Wikidata phase error: %s", exc)
+                    if title_es is not None and title_es.strip():
+                        if self._cache is not None:
+                            await self._cache.set(
+                                variant, author, title_es, "wikidata", 0.95
+                            )
+                        return TranslationResult(
+                            title_es=title_es, source="wikidata", confidence=0.95
+                        )
+                except Exception as exc:
+                    self._logger.warning("Wikidata phase error: %s", exc)
 
         # ---- Phase 3: Google Books -----------------------------------
         if self._google_books is not None:
-            try:
-                title_es = await self._google_books.get_spanish_title(
-                    title_en, author
-                )
-                if title_es is not None and title_es.strip():
-                    cleaned = self._cleaner.clean(title_es)
-                    if cleaned:
-                        if self._cache is not None:
-                            await self._cache.set(
-                                title_en,
-                                author,
-                                cleaned,
-                                "google_books",
-                                0.70,
+            for variant in variants:
+                try:
+                    title_es = await self._google_books.get_spanish_title(
+                        variant, author
+                    )
+                    if title_es is not None and title_es.strip():
+                        cleaned = self._cleaner.clean(title_es)
+                        if cleaned:
+                            if self._cache is not None:
+                                await self._cache.set(
+                                    variant,
+                                    author,
+                                    cleaned,
+                                    "google_books",
+                                    0.70,
+                                )
+                            return TranslationResult(
+                                title_es=cleaned,
+                                source="google_books",
+                                confidence=0.70,
                             )
-                        return TranslationResult(
-                            title_es=cleaned,
-                            source="google_books",
-                            confidence=0.70,
-                        )
-            except Exception as exc:
-                self._logger.warning("Google Books phase error: %s", exc)
+                except Exception as exc:
+                    self._logger.warning("Google Books phase error: %s", exc)
 
         # ---- Fallback ------------------------------------------------
         return None

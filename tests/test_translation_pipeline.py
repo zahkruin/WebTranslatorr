@@ -503,8 +503,8 @@ class TestTranslationPipeline:
         assert result.title_es == "Título español"
         assert result.source == "wikidata"
         assert result.confidence == 0.95
-        mock_cache.get.assert_called_once()
-        mock_wikidata.get_spanish_title.assert_called_once()
+        mock_cache.get.assert_called()
+        mock_wikidata.get_spanish_title.assert_called()
         mock_cache.set.assert_called_once()
 
     @pytest.mark.asyncio
@@ -532,9 +532,9 @@ class TestTranslationPipeline:
         assert result.title_es == "El nombre del viento"
         assert result.source == "google_books"
         assert result.confidence == 0.70
-        mock_cache.get.assert_called_once()
-        mock_wikidata.get_spanish_title.assert_called_once()
-        mock_google.get_spanish_title.assert_called_once()
+        mock_cache.get.assert_called()
+        mock_wikidata.get_spanish_title.assert_called()
+        mock_google.get_spanish_title.assert_called()
         mock_cache.set.assert_called_once()
 
     @pytest.mark.asyncio
@@ -555,9 +555,9 @@ class TestTranslationPipeline:
 
         result = await pipeline.translate("Unknown Book")
         assert result is None
-        mock_cache.get.assert_called_once()
-        mock_wikidata.get_spanish_title.assert_called_once()
-        mock_google.get_spanish_title.assert_called_once()
+        mock_cache.get.assert_called()
+        mock_wikidata.get_spanish_title.assert_called()
+        mock_google.get_spanish_title.assert_called()
 
     @pytest.mark.asyncio
     async def test_pipeline_no_google_api_key(self):
