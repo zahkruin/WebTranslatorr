@@ -21,6 +21,12 @@ from app.core.version import get_version
 async def lifespan(app: FastAPI):
     """Manage startup/shutdown lifecycle."""
     logger = logging.getLogger("webtranslatorr")
+    version = get_version()
+
+    logger.info("=" * 60)
+    logger.info("  WebTranslatorr v%s", version)
+    logger.info("  Universal Torznab Proxy for *Arr applications")
+    logger.info("=" * 60)
 
     # --- Startup ---
     # Create shared HTTP client
