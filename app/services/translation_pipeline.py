@@ -363,7 +363,6 @@ class WikidataClient:
         self, title_en: str, author: Optional[str] = None
     ) -> Optional[str]:
         escaped_title = self._escape_sparql(title_en)
-        title_lower = title_en.lower()
         author_clause = ""
         if author:
             escaped_author = self._escape_sparql(author)
@@ -374,8 +373,7 @@ class WikidataClient:
 
         query = (
             "SELECT ?item ?label_es WHERE {"
-            "  ?item wdt:P31/wdt:P279* wd:Q571."
-            f"  ?item rdfs:label ?label_en. FILTER(LANG(?label_en) = \"en\" && LCASE(STR(?label_en)) = \"{self._escape_sparql(title_lower)}\")"
+            f"  ?item rdfs:label \"{escaped_title}\"@en."
             f"  {author_clause}"
             "  ?item rdfs:label ?label_es."
             '  FILTER(LANG(?label_es) = "es")'
@@ -734,9 +732,10 @@ class TranslationPipeline:
     def _title_variants(title: str) -> list[str]:
         """Generate search variants for a book title.
 
-        Tries the original, strips/adds leading "The", and for combined
-        "Title AuthorSurname" queries from Readarr t=search, splits off
-        trailing words to extract the pure title.
+        Returns the original title, with/without leading "The".
+        For combined "Author ... Title" queries from Readarr t=search,
+        strips one trailing word at a time (up to half the input length)
+        so that the pure title remains.
         """
         variants = [title]
         lower = title.lower().strip()
@@ -745,17 +744,19 @@ class TranslationPipeline:
         else:
             variants.append("The " + title.strip())
         words = lower.split()
-        if len(words) >= 4:
-            for split_at in range(len(words) - 1, 1, -1):
-                head = " ".join(words[:split_at]).strip()
-                if head and head not in ("the", "a", "an"):
-                    origin = title[: len(head)]
-                    variants.append(origin.strip())
-                    if lower.startswith("the ") and head.startswith("the "):
-                        without_the = origin[4:].strip()
-                        if without_the:
-                            variants.append(without_the)
-                    break
+        total = len(words)
+        max_strips = max(1, total // 2)
+        for strip_count in range(1, max_strips + 1):
+            if total - strip_count < 2:
+                break
+            head = " ".join(words[: total - strip_count]).strip()
+            if head and head not in ("the", "a", "an"):
+                origin = title[: len(head)]
+                variants.append(origin.strip())
+                if lower.startswith("the "):
+                    without_the = origin[4:].strip()
+                    if without_the:
+                        variants.append(without_the)
         seen = set()
         unique = []
         for v in variants:
