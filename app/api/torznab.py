@@ -167,6 +167,41 @@ def _parse_cats(cat_str: str) -> list[int]:
     return [int(c) for c in cat_str.split(",") if c.isdigit()]
 
 
+# ---- Request-scoped translation cache ----
+# WebTranslatorr creates one provider-specific HTTP call per provider
+# per Readarr request, but each call re-executes the full translation
+# pipeline.  This dict deduplicates translation lookups within a short
+# time window (5 s) so that N providers for the same query only trigger
+# one Wikidata/GoogleBooks cascade.
+import time as _time
+_translation_request_cache: dict[str, tuple[float, str | None]] = {}
+_TRANSLATION_CACHE_TTL = 5.0
+
+
+def _cached_translate(
+    translation_title: str, translation_author: str | None
+) -> str | None:
+    """Return cached translation or None. Cleans expired entries."""
+    now = _time.monotonic()
+    key = f"{translation_title}\x00{translation_author or ''}"
+    if key in _translation_request_cache:
+        ts, result = _translation_request_cache[key]
+        if now - ts < _TRANSLATION_CACHE_TTL:
+            return result
+        del _translation_request_cache[key]
+    expired = [k for k, (t, _) in _translation_request_cache.items() if now - t >= _TRANSLATION_CACHE_TTL]
+    for k in expired:
+        del _translation_request_cache[k]
+    return None
+
+
+def _set_cached_translate(
+    translation_title: str, translation_author: str | None, result: str | None
+) -> None:
+    key = f"{translation_title}\x00{translation_author or ''}"
+    _translation_request_cache[key] = (_time.monotonic(), result)
+
+
 async def _handle_torznab_request(
     providers: list,
     params: dict,
@@ -239,18 +274,53 @@ async def _handle_torznab_request(
         is_generic_search = len(parsed_cats) == 0 and not imdbid and not tvdbid
 
         if is_book_search or is_generic_search:
-            try:
-                translation_pipeline = await get_translation_pipeline()
-                if translation_pipeline is not None:
-                    result = await translation_pipeline.translate(translation_title, translation_author)
-                    if result is not None:
-                        effective_q = result.title_es
-                        logging.info(
-                            f"Translation: '%s' -> '%s' (source=%s, confidence=%s)",
-                            translation_title, effective_q, result.source, result.confidence
-                        )
-            except Exception as e:
-                logging.warning(f"Translation pipeline error (using original query): {e}")
+            cached = _cached_translate(translation_title, translation_author)
+            if cached is not None:
+                if cached:
+                    effective_q = cached
+                    logging.debug(
+                        "Translation (cached): '%s' -> '%s'",
+                        translation_title, effective_q,
+                    )
+            else:
+                try:
+                    translation_pipeline = await get_translation_pipeline()
+                    if translation_pipeline is not None:
+                        result = await translation_pipeline.translate(translation_title, translation_author)
+                        if result is not None:
+                            translated = result.title_es
+                            # Validate: skip if same as English input,
+                            # if confidence too low with fishy result,
+                            # or if result contains the author name (likely
+                            # a collected-works result, not the book itself).
+                            if translated.lower() == translation_title.lower():
+                                logging.debug(
+                                    "Translation '%s' unchanged, using original query",
+                                    translated,
+                                )
+                                _set_cached_translate(translation_title, translation_author, None)
+                            elif (
+                                result.confidence < 0.8
+                                and translation_author
+                                and translation_author.lower() in translated.lower()
+                            ):
+                                logging.debug(
+                                    "Translation '%s' looks like a collection (contains author name), using original query",
+                                    translated,
+                                )
+                                _set_cached_translate(translation_title, translation_author, None)
+                            else:
+                                effective_q = translated
+                                logging.info(
+                                    f"Translation: '%s' -> '%s' (source=%s, confidence=%s)",
+                                    translation_title, effective_q, result.source, result.confidence
+                                )
+                                _set_cached_translate(translation_title, translation_author, effective_q)
+                        else:
+                            _set_cached_translate(translation_title, translation_author, None)
+                except Exception as e:
+                    _set_cached_translate(translation_title, translation_author, None)
+                    logging.warning(f"Translation pipeline error (using original query): {e}")
 
     has_query = bool(q and q.strip()) or bool(author and author.strip()) or bool(title and title.strip())
 

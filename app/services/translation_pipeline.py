@@ -363,6 +363,7 @@ class WikidataClient:
         self, title_en: str, author: Optional[str] = None
     ) -> Optional[str]:
         escaped_title = self._escape_sparql(title_en)
+        title_lower = title_en.lower()
         author_clause = ""
         if author:
             escaped_author = self._escape_sparql(author)
@@ -374,12 +375,11 @@ class WikidataClient:
         query = (
             "SELECT ?item ?label_es WHERE {"
             "  ?item wdt:P31/wdt:P279* wd:Q571."
-            f"  ?item rdfs:label ?label_en."
-            f"  FILTER(LANG(?label_en) = \"en\" && REGEX(STR(?label_en), \"{escaped_title}\", \"i\"))"
+            f"  ?item rdfs:label ?label_en. FILTER(LANG(?label_en) = \"en\" && LCASE(STR(?label_en)) = \"{self._escape_sparql(title_lower)}\")"
             f"  {author_clause}"
             "  ?item rdfs:label ?label_es."
             '  FILTER(LANG(?label_es) = "es")'
-            "} LIMIT 5"
+            "} LIMIT 3"
         )
 
         try:
@@ -649,8 +649,9 @@ class TranslationPipeline:
     def _title_variants(title: str) -> list[str]:
         """Generate search variants for a book title.
 
-        Tries the original, strips leading articles, and adds "The".
-        Handles combined "Title Author" queries from Readarr t=search.
+        Tries the original, strips/adds leading "The", and for combined
+        "Title AuthorSurname" queries from Readarr t=search, splits off
+        trailing words to extract the pure title.
         """
         variants = [title]
         lower = title.lower().strip()
@@ -659,17 +660,22 @@ class TranslationPipeline:
         else:
             variants.append("The " + title.strip())
         words = lower.split()
-        if len(words) >= 3:
+        if len(words) >= 4:
             for split_at in range(len(words) - 1, 1, -1):
-                head = " ".join(words[:split_at])
-                if lower.startswith("the ") and len(head) > 3:
-                    variants.append(head[4:].strip())
-                variants.append(head.strip())
+                head = " ".join(words[:split_at]).strip()
+                if head and head not in ("the", "a", "an"):
+                    origin = title[: len(head)]
+                    variants.append(origin.strip())
+                    if lower.startswith("the ") and head.startswith("the "):
+                        without_the = origin[4:].strip()
+                        if without_the:
+                            variants.append(without_the)
+                    break
         seen = set()
         unique = []
         for v in variants:
-            key = v.lower()
-            if key not in seen and key.strip():
+            key = v.lower().strip()
+            if key and key not in seen:
                 seen.add(key)
                 unique.append(v)
         return unique
