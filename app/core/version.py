@@ -8,7 +8,7 @@ between server.py and the api modules.
 
 from pathlib import Path
 
-_VERSION_PATH = Path(__file__).resolve().parent.parent / "VERSION"
+_VERSION_PATH = Path(__file__).resolve().parent.parent.parent / "VERSION"
 
 
 def get_version() -> str:
