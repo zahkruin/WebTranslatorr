@@ -485,6 +485,14 @@ class GoogleBooksClient:
     ) -> Optional[str]:
         """Resolve a Spanish title via Google Books.
 
+        Three-phase lookup:
+        1. Search without langRestrict to find the book's
+           canonical volume.
+        2. Look up author's works in Spanish and match by
+           published date proximity.
+        3. Fallback: search by author alone with langRestrict=es
+           and pick the first Spanish result.
+
         Args:
             title_en: English title.
             author: Author name (optional).
@@ -495,45 +503,122 @@ class GoogleBooksClient:
         if not self._enabled or not self._api_key:
             return None
 
-        # Build query string
         q = f'intitle:"{title_en}"'
         if author:
             q += f'+inauthor:"{author}"'
 
-        params = {
-            "q": q,
-            "langRestrict": "es",
+        base_params = {
             "maxResults": 3,
             "printType": "books",
             "key": self._api_key,
         }
 
         try:
+            # ---- Phase 1: find the book in any language ---------------
             resp = await self._client.get(
-                self.BASE_URL, params=params, timeout=self._timeout
+                self.BASE_URL,
+                params={**base_params, "q": q},
+                timeout=self._timeout,
             )
 
-            if resp.status_code == 429:
-                self._logger.warning("Google Books rate limit exceeded")
+            if resp.status_code in (429, 403):
+                self._logger.warning(
+                    "Google Books access denied (%s)", resp.status_code
+                )
                 return None
-            if resp.status_code == 403:
-                self._logger.warning("Google Books API access denied")
-                return None
-
             resp.raise_for_status()
-            data = resp.json()
 
+            data = resp.json()
             items = data.get("items", [])
             if not items:
                 return None
 
-            return items[0].get("volumeInfo", {}).get("title")
+            canonical_volume = items[0]
+            canonical_vi = canonical_volume.get("volumeInfo", {})
+            canonical_date = canonical_vi.get("publishedDate", "")
+
+            # ---- Phase 2: author search in Spanish, match by date -----
+            if author:
+                author_es_q = f'inauthor:"{author}"'
+                es_resp = await self._client.get(
+                    self.BASE_URL,
+                    params={
+                        **base_params,
+                        "q": author_es_q,
+                        "langRestrict": "es",
+                        "maxResults": 20,
+                    },
+                    timeout=self._timeout,
+                )
+
+                if es_resp.status_code not in (429, 403):
+                    es_resp.raise_for_status()
+                    es_data = es_resp.json()
+                    es_items = es_data.get("items", [])
+
+                    for item in es_items:
+                        vi = item.get("volumeInfo", {})
+                        if vi.get("language") != "es":
+                            continue
+                        es_date = vi.get("publishedDate", "")
+                        if es_date and canonical_date:
+                            es_year = es_date[:4]
+                            en_year = canonical_date[:4]
+                            if es_year == en_year:
+                                es_title = self._get_best_title(vi)
+                                if es_title and es_title != title_en:
+                                    self._logger.debug(
+                                        "Google Books date-matched: '%s' -> '%s'",
+                                        title_en, es_title,
+                                    )
+                                    return es_title
+
+            # ---- Phase 3: fallback – first Spanish result by author ---
+            if author:
+                author_es_q_fb = f'inauthor:"{author}"'
+                es_resp_fb = await self._client.get(
+                    self.BASE_URL,
+                    params={
+                        **base_params,
+                        "q": author_es_q_fb,
+                        "langRestrict": "es",
+                        "maxResults": 20,
+                    },
+                    timeout=self._timeout,
+                )
+
+                if es_resp_fb.status_code not in (429, 403):
+                    es_resp_fb.raise_for_status()
+                    es_data_fb = es_resp_fb.json()
+
+                    for item in es_data_fb.get("items", []):
+                        vi = item.get("volumeInfo", {})
+                        if vi.get("language") != "es":
+                            continue
+                        es_title = self._get_best_title(vi)
+                        if es_title and es_title.lower() != title_en.lower():
+                            self._logger.debug(
+                                "Google Books fallback: '%s' -> '%s'",
+                                title_en, es_title,
+                            )
+                            return es_title
+
+            return None
 
         except httpx.HTTPError as exc:
             self._logger.warning(
                 "Google Books lookup failed for '%s': %s", title_en, exc
             )
             return None
+
+    @staticmethod
+    def _get_best_title(volume_info: dict) -> Optional[str]:
+        """Return the best display title from a volumeInfo dict."""
+        title = volume_info.get("title")
+        subtitle = volume_info.get("subtitle")
+        if title and subtitle:
+            return f"{title}: {subtitle}"
+        return title
 
 
 # ---------------------------------------------------------------------------

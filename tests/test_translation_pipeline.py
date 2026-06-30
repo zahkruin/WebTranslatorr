@@ -373,16 +373,38 @@ class TestGoogleBooksClient:
     @pytest.mark.asyncio
     async def test_google_found_with_title(self):
         """API returns items with title → returns title."""
+        from unittest.mock import ANY
+
         client_mock = AsyncMock()
         client_mock.get = AsyncMock()
 
-        client_mock.get.return_value = _http200(
-            {
-                "items": [
-                    {"volumeInfo": {"title": "El nombre del viento"}}
-                ]
-            },
-        )
+        client_mock.get.side_effect = [
+            _http200(
+                {
+                    "items": [
+                        {
+                            "volumeInfo": {
+                                "title": "The Name of the Wind",
+                                "publishedDate": "2007-03-27",
+                            }
+                        }
+                    ]
+                }
+            ),
+            _http200(
+                {
+                    "items": [
+                        {
+                            "volumeInfo": {
+                                "title": "El nombre del viento",
+                                "language": "es",
+                                "publishedDate": "2007",
+                            }
+                        }
+                    ]
+                }
+            ),
+        ]
 
         google = GoogleBooksClient(client=client_mock, api_key="fake-key")
         result = await google.get_spanish_title(
