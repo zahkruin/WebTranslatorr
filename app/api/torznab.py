@@ -290,19 +290,28 @@ async def _handle_torznab_request(
                         if result is not None:
                             translated = result.title_es
                             # Validate: skip if same as English input,
-                            # if confidence too low with fishy result,
-                            # or if result contains the author name (likely
-                            # a collected-works result, not the book itself).
-                            if translated.lower() == translation_title.lower():
+                            # if result is just the author name,
+                            # or if result contains the author name with
+                            # low confidence (likely a collected-works).
+                            tl_lower = translated.lower()
+                            tt_lower = translation_title.lower()
+                            author_lower = (translation_author or "").lower()
+                            if tl_lower == tt_lower:
                                 logging.debug(
                                     "Translation '%s' unchanged, using original query",
                                     translated,
                                 )
                                 _set_cached_translate(translation_title, translation_author, None)
+                            elif author_lower and tl_lower == author_lower:
+                                logging.debug(
+                                    "Translation '%s' is the author name, using original query",
+                                    translated,
+                                )
+                                _set_cached_translate(translation_title, translation_author, None)
                             elif (
                                 result.confidence < 0.8
-                                and translation_author
-                                and translation_author.lower() in translated.lower()
+                                and author_lower
+                                and author_lower in tl_lower
                             ):
                                 logging.debug(
                                     "Translation '%s' looks like a collection (contains author name), using original query",
