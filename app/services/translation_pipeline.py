@@ -349,7 +349,19 @@ class WikidataClient:
         if not self._enabled:
             return None
 
-        # Build SPARQL query --------------------------------------------
+        result = await self._run_sparql_query(title_en, author)
+        if result is None and author and title_en.lower().endswith(author.lower()):
+            stripped_title = title_en[: -len(author)].strip()
+            if stripped_title:
+                self._logger.debug(
+                    "Wikidata retry with stripped title: '%s'", stripped_title
+                )
+                result = await self._run_sparql_query(stripped_title, author)
+        return result
+
+    async def _run_sparql_query(
+        self, title_en: str, author: Optional[str] = None
+    ) -> Optional[str]:
         escaped_title = self._escape_sparql(title_en)
         author_clause = ""
         if author:
@@ -370,7 +382,6 @@ class WikidataClient:
         )
 
         try:
-            # Step 1 — SPARQL query -------------------------------------
             sparql_resp = await self._client.post(
                 self.SPARQL_ENDPOINT,
                 data={"format": "json", "query": query},
@@ -387,13 +398,11 @@ class WikidataClient:
             if not bindings:
                 return None
 
-            # Extract QID from the first result URL
             item_url = bindings[0].get("item", {}).get("value", "")
             qid = item_url.rsplit("/", 1)[-1] if item_url else None
             if not qid:
                 return None
 
-            # Step 2 — Entity data --------------------------------------
             entity_resp = await self._client.get(
                 self.ENTITY_DATA_URL.format(qid=qid),
                 headers={"User-Agent": self.USER_AGENT},

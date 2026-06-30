@@ -227,7 +227,13 @@ async def _handle_torznab_request(
     from app.services.translation_pipeline import get_translation_pipeline
 
     effective_q = q
-    if q and q.strip() and parsed_cats:
+    # Determine the English title for translation.
+    # Readarr sends t=book with separate author=/title= params (no q=),
+    # and t=search with q= combining title+author but no author=/title=.
+    translation_title = (q or title or "").strip()
+    translation_author = (author or "").strip() or None
+
+    if translation_title and parsed_cats:
         from app.core.categories import CategoryMapper
         is_book_search = any(7000 <= c <= 8999 for c in parsed_cats)
         is_generic_search = len(parsed_cats) == 0 and not imdbid and not tvdbid
@@ -236,12 +242,12 @@ async def _handle_torznab_request(
             try:
                 translation_pipeline = await get_translation_pipeline()
                 if translation_pipeline is not None:
-                    result = await translation_pipeline.translate(q, author or None)
+                    result = await translation_pipeline.translate(translation_title, translation_author)
                     if result is not None:
                         effective_q = result.title_es
                         logging.info(
                             f"Translation: '%s' -> '%s' (source=%s, confidence=%s)",
-                            q, effective_q, result.source, result.confidence
+                            translation_title, effective_q, result.source, result.confidence
                         )
             except Exception as e:
                 logging.warning(f"Translation pipeline error (using original query): {e}")
