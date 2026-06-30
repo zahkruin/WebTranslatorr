@@ -772,7 +772,8 @@ class TranslationPipeline:
         """Translate an English book title to Spanish.
 
         Cascades through cache → Wikidata → Google Books with silent
-        fallback.  Results are persisted in the local cache for future use.
+        fallback.  All title variants are tried against each phase
+        before falling through to the next one.
 
         Args:
             title_en: English title (required, non-empty).
@@ -786,7 +787,7 @@ class TranslationPipeline:
 
         variants = self._title_variants(title_en)
 
-        # ---- Phase 1: Local cache ------------------------------------
+        # ---- Phase 1: Local cache (all variants) ----------------------
         if self._cache is not None:
             for variant in variants:
                 try:
@@ -799,7 +800,7 @@ class TranslationPipeline:
                 except Exception as exc:
                     self._logger.warning("Cache lookup error: %s", exc)
 
-        # ---- Phase 2: Wikidata ---------------------------------------
+        # ---- Phase 2: Wikidata (all variants before falling back) -----
         if self._wikidata is not None:
             for variant in variants:
                 try:
@@ -817,7 +818,7 @@ class TranslationPipeline:
                 except Exception as exc:
                     self._logger.warning("Wikidata phase error: %s", exc)
 
-        # ---- Phase 3: Google Books -----------------------------------
+        # ---- Phase 3: Google Books (all variants) ---------------------
         if self._google_books is not None:
             for variant in variants:
                 try:
