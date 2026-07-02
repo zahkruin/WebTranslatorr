@@ -150,6 +150,31 @@
       "priority": "medium"
     },
     {
+      "pattern": "app/persistence/*.py",
+      "documents": ["context/02-configuration.md", "context/01-architecture.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/api/admin.py",
+      "documents": ["context/13-api-endpoints.md", "context/01-architecture.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/services/config_manager.py",
+      "documents": ["context/02-configuration.md", "context/01-architecture.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/services/readarr_syncer.py",
+      "documents": ["context/13-api-endpoints.md", "context/01-architecture.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "static/*",
+      "documents": ["context/14-deployment.md", "context/01-architecture.md"],
+      "priority": "medium"
+    },
+    {
       "pattern": "tests/*",
       "documents": ["context/15-testing.md"],
       "priority": "medium"
@@ -163,6 +188,16 @@
       "pattern": "*.json",
       "documents": null,
       "priority": "skip"
+    },
+    {
+      "pattern": "app/providers/books/booksee.py",
+      "documents": ["context/06-provider-strategies/booksee.md"],
+      "priority": "high"
+    },
+    {
+      "pattern": "app/providers/books/oceanofpdf.py",
+      "documents": ["context/06-provider-strategies/oceanofpdf.md"],
+      "priority": "high"
     }
   ]
 }

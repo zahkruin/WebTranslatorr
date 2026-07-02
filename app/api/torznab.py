@@ -47,6 +47,9 @@ from app.providers.books.lelibros import LeLibrosProvider
 from app.providers.books.bajaebooks import BajaebooksProvider
 from app.providers.books.ebiblioteca import EbibliotecaProvider
 from app.providers.books.epubgratis import EpubgratisProvider
+# Plan 003 — new book providers
+from app.providers.books.booksee import BookseeProvider
+from app.providers.books.oceanofpdf import OceanOfPDFProvider
 # Integration plan — new video/torrent providers
 from app.providers.video.divxtotal import DivxtotalProvider
 from app.providers.video.elitetorrent import EliteTorrentProvider
@@ -59,6 +62,32 @@ from app.torznab.errors import TorznabErrors
 from app.scraping.http_client import HttpClient
 from app.core.categories import CategoryMapper
 from app.services.cache import search_cache
+
+# Provider registry: maps provider_id → Provider class
+_PROVIDER_CLASSES: dict[str, type] = {
+    "ebookelo": EbookeloProvider,
+    "epublibre": EpubLibreProvider,
+    "lectulandia": LectulandiaProvider,
+    "espaebook": EspaebookProvider,
+    "holaebook": HolaEbookProvider,
+    "annasarchive": AnnasArchiveProvider,
+    "mejortorrent": MejorTorrentProvider,
+    "dontorrent": DonTorrentProvider,
+    "epubflix1": Epubflix1Provider,
+    "libgen": LibgenProvider,
+    "booobook": BooobookProvider,
+    "lectuepublibre5": LectuEpubLibre5Provider,
+    "mundoepublibre1": MundoEpubLibre1Provider,
+    "zlibrary": ZLibraryProvider,
+    "lelibros": LeLibrosProvider,
+    "bajaebooks": BajaebooksProvider,
+    "ebiblioteca": EbibliotecaProvider,
+    "epubgratis": EpubgratisProvider,
+    "divxtotal": DivxtotalProvider,
+    "elitetorrent": EliteTorrentProvider,
+    "booksee": BookseeProvider,
+    "oceanofpdf": OceanOfPDFProvider,
+}
 
 router = APIRouter()
 
@@ -78,8 +107,8 @@ def _get_http_client():
     return _http_client
 
 
-def _init_providers(resolver=None):
-    """Inicializa los providers según configuración."""
+def _init_providers_from_env(resolver=None):
+    """Inicializa los providers según variables de entorno (fallback sin DB)."""
     http_client = _get_http_client()
 
     # Limpiar registro antes de inicializar para ser idempotente
@@ -148,6 +177,13 @@ def _init_providers(resolver=None):
     if settings.ELITETORRENT_ENABLED:
         registry.register(EliteTorrentProvider(http_client, resolver))
 
+    # --- Plan 003 — new book providers ---
+    if settings.BOOKSEE_ENABLED:
+        registry.register(BookseeProvider(http_client, resolver))
+
+    if settings.OCEANOFPDF_ENABLED:
+        registry.register(OceanOfPDFProvider(http_client, resolver))
+
     # Providers configurados pero no implementados aún
     if settings.ELEJANDRIA_ENABLED:
         logging.warning("Elejandria provider is configured as enabled but not yet implemented")
@@ -155,8 +191,40 @@ def _init_providers(resolver=None):
         logging.warning("Gutenberg provider is configured as enabled but not yet implemented")
 
 
-def _validate_apikey(apikey: str) -> bool:
-    """Valida la API key."""
+async def _init_providers(resolver=None, config_manager=None):
+    """Inicializa los providers según configuración en base de datos."""
+    http_client = _get_http_client()
+    registry.clear()
+
+    if config_manager is None:
+        # Fallback: si no hay ConfigManager, usar env vars directamente
+        # (compatibilidad con tests que no tienen DB)
+        from config import settings
+        _init_providers_from_env(resolver)
+        return
+
+    # Leer providers habilitados desde la DB
+    providers = await config_manager.get_all_enabled_providers()
+
+    for p in providers:
+        provider_id = p["provider_id"]
+        provider_cls = _PROVIDER_CLASSES.get(provider_id)
+        if provider_cls is not None:
+            if resolver and p.get("domain"):
+                # Actualizar dominio del resolver si el provider tiene dominio en DB
+                pass  # DomainResolver se maneja en server.py
+            registry.register(provider_cls(http_client, resolver))
+            logging.info(f"Provider {provider_id} registered from DB config")
+        else:
+            logging.warning(f"Unknown provider_id '{provider_id}' in DB — no class mapping")
+
+
+async def _validate_apikey(apikey: str, config_manager=None) -> bool:
+    """Valida la API key contra la DB o env vars."""
+    if config_manager is not None:
+        return await config_manager.validate_api_key(apikey)
+    # Fallback: usar env var
+    from config import settings
     return apikey == settings.API_KEY
 
 
@@ -174,6 +242,8 @@ def _parse_cats(cat_str: str) -> list[int]:
 # time window (5 s) so that N providers for the same query only trigger
 # one Wikidata/GoogleBooks cascade.
 import time as _time
+from app.services.cache import normalize_query_key
+
 _translation_request_cache: dict[str, tuple[float, str | None]] = {}
 _TRANSLATION_CACHE_TTL = 5.0
 
@@ -183,7 +253,7 @@ def _cached_translate(
 ) -> str | None:
     """Return cached translation or None. Cleans expired entries."""
     now = _time.monotonic()
-    key = f"{translation_title}\x00{translation_author or ''}"
+    key = f"{normalize_query_key(translation_title)}\x00{normalize_query_key(translation_author or '')}"
     if key in _translation_request_cache:
         ts, result = _translation_request_cache[key]
         if now - ts < _TRANSLATION_CACHE_TTL:
@@ -198,7 +268,7 @@ def _cached_translate(
 def _set_cached_translate(
     translation_title: str, translation_author: str | None, result: str | None
 ) -> None:
-    key = f"{translation_title}\x00{translation_author or ''}"
+    key = f"{normalize_query_key(translation_title)}\x00{normalize_query_key(translation_author or '')}"
     _translation_request_cache[key] = (_time.monotonic(), result)
 
 
@@ -215,6 +285,7 @@ async def _handle_torznab_request(
     ep: str = "",
     author: str = "",
     title: str = "",
+    lang: str = "",
 ) -> Response:
     """
     Núcleo compartido de la lógica Torznab.
@@ -260,13 +331,42 @@ async def _handle_torznab_request(
 
     # ---- Translation Pipeline integration (Phase 8) ----
     from app.services.translation_pipeline import get_translation_pipeline
+    from app.core.languages import resolve_language
+
+    # Resolve target language for translation lookups.
+    # Priority: 1) explicit ?lang= param, 2) default from config.
+    from app.core.languages import SUPPORTED_LANGUAGES
+
+    _search_lang = resolve_language(lang or settings.DEFAULT_SEARCH_LANGUAGE)
+    if lang and lang.strip().lower() not in SUPPORTED_LANGUAGES:
+        logging.warning(
+            "Unsupported language '%s', falling back to '%s'",
+            lang, _search_lang.code,
+        )
+    logging.debug("Search language resolved: %s (%s)", _search_lang.code, _search_lang.display_name)
 
     effective_q = q
     # Determine the English title for translation.
     # Readarr sends t=book with separate author=/title= params (no q=),
     # and t=search with q= combining title+author but no author=/title=.
-    translation_title = (q or title or "").strip()
-    translation_author = (author or "").strip() or None
+    #
+    # Prefer the explicit title parameter when available, as it avoids
+    # generating unnecessary title variants from combined queries.
+    # If only q= is present, strip the author name from the combined
+    # query to extract the pure title (reduces variant count).
+    _title_param = (title or "").strip()
+    _author_param = (author or "").strip()
+    if _title_param:
+        translation_title = _title_param
+    elif q and _author_param:
+        # Strip author words from the combined query to isolate the title
+        author_words = set(_author_param.lower().split())
+        q_words = q.strip().split()
+        title_words = [w for w in q_words if w.lower() not in author_words]
+        translation_title = " ".join(title_words).strip() or q.strip()
+    else:
+        translation_title = (q or "").strip()
+    translation_author = _author_param or None
 
     if translation_title and parsed_cats:
         from app.core.categories import CategoryMapper
@@ -286,7 +386,11 @@ async def _handle_torznab_request(
                 try:
                     translation_pipeline = await get_translation_pipeline()
                     if translation_pipeline is not None:
-                        result = await translation_pipeline.translate(translation_title, translation_author)
+                        result = await translation_pipeline.translate(
+                            translation_title,
+                            translation_author,
+                            target_lang=_search_lang,
+                        )
                         if result is not None:
                             translated = result.title_es
                             # Validate: skip if same as English input,
@@ -457,6 +561,7 @@ async def torznab_api(
     ep: str = Query("", description="Número de episodio"),
     author: str = Query("", description="Autor (book-search)"),
     title: str = Query("", description="Título (book-search)"),
+    lang: str = Query("", description="Idioma destino (es, en, fr, de, it, pt)"),
 ):
     """
     Endpoint Torznab principal.
@@ -465,7 +570,8 @@ async def torznab_api(
     También responde a t=caps con las capabilities agregadas de todos los providers.
     """
     # Validar API key
-    if not _validate_apikey(apikey):
+    config_manager = request.app.state.config_manager
+    if not await _validate_apikey(apikey, config_manager):
         # t=caps sin API key: devolver caps básicas para permitir
         # que las *Arr apps detecten el servicio (como hace Jackett)
         if t and t.lower() == "caps":
@@ -512,6 +618,7 @@ async def torznab_api(
         ep=ep,
         author=author,
         title=title,
+        lang=lang,
     )
 
 
@@ -660,6 +767,7 @@ async def provider_torznab_api(
     ep: str = Query("", description="Número de episodio"),
     author: str = Query("", description="Autor (book-search)"),
     title: str = Query("", description="Título (book-search)"),
+    lang: str = Query("", description="Idioma destino (es, en, fr, de, it, pt)"),
 ):
     """
     Endpoint Torznab para un UNICO provider.
@@ -673,7 +781,8 @@ async def provider_torznab_api(
     provider_id_lower = provider_id.lower()
 
     # Validar API key
-    if not _validate_apikey(apikey):
+    config_manager = request.app.state.config_manager
+    if not await _validate_apikey(apikey, config_manager):
         # t=caps sin API key: permitir detección del servicio
         if t and t.lower() == "caps":
             try:
@@ -736,6 +845,7 @@ async def provider_torznab_api(
         ep=ep,
         author=author,
         title=title,
+        lang=lang,
     )
 
 

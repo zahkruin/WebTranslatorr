@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     LELIBROS_DOMAIN: str = "https://lelibros.online"
     DIVXTOTAL_DOMAIN: str = "https://divxtotal.wtf"
     ELITETORRENT_DOMAIN: str = "https://www.elitetorrent.com"
+    # BookSee & OceanOfPDF (Plan 003)
+    BOOKSEE_ENABLED: bool = True
+    BOOKSEE_DOMAIN: str = "https://en.booksee.org"
+    OCEANOFPDF_ENABLED: bool = True
+    OCEANOFPDF_DOMAIN: str = "https://oceanofpdf.com"
 
     # TMDB (para resolver IMDb ID → título español)
     TMDB_API_KEY: str = ""
@@ -94,6 +99,11 @@ class Settings(BaseSettings):
     TRANSLATION_PIPELINE_WIKIDATA_ENABLED: bool = True
     TRANSLATION_PIPELINE_GOOGLE_BOOKS_ENABLED: bool = True
     TRANSLATION_PIPELINE_SEARCH_ENABLED: bool = False
+
+    # Search language (ISO 639-1 code: es, en, fr, de, it, pt)
+    # Controls which target language Wikidata / Google Books lookups
+    # use when translating book titles from English.
+    DEFAULT_SEARCH_LANGUAGE: str = "es"
 
 
 settings = Settings()
