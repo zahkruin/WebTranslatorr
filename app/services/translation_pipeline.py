@@ -36,13 +36,15 @@ class TranslationResult:
     """Immutable result of a translation pipeline lookup.
 
     Attributes:
-        title_es: Translated title in Spanish.
+        title_es: Translated title in the target language.
         source: Origin of the translation ("cache", "wikidata", "google_books").
         confidence: Confidence score (1.0 = cache, 0.95 = wikidata, 0.70 = google_books).
+        target_lang: ISO 639-1 code of the target language (default "es").
     """
     title_es: str
     source: str
     confidence: float
+    target_lang: str = "es"
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +82,10 @@ class TranslationCache:
     def _normalize(text: str) -> str:
         """Normalise a string for deterministic hashing.
 
-        Lowercases, strips punctuation, collapses whitespace.
+        Lowercases, strips punctuation, collapses whitespace,
+        deduplicates words and sorts them alphabetically so
+        that ``Warbreaker Brandon Sanderson`` and
+        ``Brandon Sanderson Warbreaker`` produce the same key.
 
         Args:
             text: Raw input string (may be *None* or empty).
@@ -92,21 +97,28 @@ class TranslationCache:
             return ""
         text = text.lower()
         text = re.sub(r"[^\w\s]", "", text)
-        text = re.sub(r"\s+", " ", text)
-        return text.strip()
+        words = text.split()
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for w in words:
+            if w not in seen:
+                seen.add(w)
+                deduped.append(w)
+        return " ".join(sorted(deduped)).strip()
 
     @classmethod
-    def _compute_hash(cls, title_en: str, author: Optional[str]) -> str:
-        """Produce a deterministic SHA-256 hash for a title+author pair.
+    def _compute_hash(cls, title_en: str, author: Optional[str], target_lang: str = "es") -> str:
+        """Produce a deterministic SHA-256 hash for a title+author+language tuple.
 
         Args:
             title_en: English title.
             author: Author name (optional).
+            target_lang: ISO 639-1 target language code.
 
         Returns:
             Hex-encoded SHA-256 digest.
         """
-        normalized = cls._normalize(title_en) + "|" + cls._normalize(author or "")
+        normalized = cls._normalize(title_en) + "|" + cls._normalize(author or "") + "|" + target_lang
         return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
     # ------------------------------------------------------------------
@@ -127,13 +139,17 @@ class TranslationCache:
         logger.debug("TranslationCache connected to %s", self._db_path)
 
     async def _create_schema(self) -> None:
-        """Create the ``translation_cache`` table and index if missing."""
+        """Create the ``translation_cache`` table and index if missing.
+
+        The schema is evolved in-place: if the ``target_lang`` column
+        is absent it will be added automatically.
+        """
         assert self._conn is not None
         await self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS translation_cache (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title_en_hash TEXT UNIQUE NOT NULL,
+                title_en_hash TEXT NOT NULL,
                 title_en TEXT NOT NULL,
                 author TEXT,
                 title_es TEXT NOT NULL,
@@ -141,10 +157,19 @@ class TranslationCache:
                 confidence REAL NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 hit_count INTEGER NOT NULL DEFAULT 0,
-                last_hit_at TEXT
+                last_hit_at TEXT,
+                target_lang TEXT NOT NULL DEFAULT 'es'
             )
             """
         )
+        # Migration: add target_lang column if missing (for existing databases)
+        try:
+            await self._conn.execute(
+                "ALTER TABLE translation_cache ADD COLUMN target_lang TEXT NOT NULL DEFAULT 'es'"
+            )
+        except Exception:
+            # Column already exists — ignore
+            pass
         await self._conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_translation_cache_hash "
             "ON translation_cache(title_en_hash)"
@@ -170,13 +195,14 @@ class TranslationCache:
     # ------------------------------------------------------------------
 
     async def get(
-        self, title_en: str, author: Optional[str] = None
+        self, title_en: str, author: Optional[str] = None, target_lang: str = "es"
     ) -> Optional[TranslationResult]:
         """Look up a cached translation.
 
         Args:
             title_en: English title.
             author: Author name (optional).
+            target_lang: ISO 639-1 target language code.
 
         Returns:
             Cached ``TranslationResult`` or ``None`` on miss.
@@ -184,9 +210,9 @@ class TranslationCache:
         if self._conn is None:
             await self.connect()
         assert self._conn is not None
-        h = self._compute_hash(title_en, author)
+        h = self._compute_hash(title_en, author, target_lang)
         cursor = await self._conn.execute(
-            "SELECT title_es, source, confidence FROM translation_cache "
+            "SELECT title_es, source, confidence, target_lang FROM translation_cache "
             "WHERE title_en_hash = ?",
             (h,),
         )
@@ -202,7 +228,12 @@ class TranslationCache:
             (h,),
         )
         await self._conn.commit()
-        return TranslationResult(title_es=row[0], source=row[1], confidence=row[2])
+        return TranslationResult(
+            title_es=row[0],
+            source=row[1],
+            confidence=row[2],
+            target_lang=row[3] if len(row) > 3 else "es",
+        )
 
     async def set(
         self,
@@ -211,37 +242,40 @@ class TranslationCache:
         title_es: str,
         source: str,
         confidence: float,
+        target_lang: str = "es",
     ) -> None:
         """Store a translation in the cache (upsert).
 
         Args:
             title_en: English title.
             author: Author name (optional).
-            title_es: Spanish translation.
+            title_es: Translated title.
             source: Origin of the translation.
             confidence: Confidence score.
+            target_lang: ISO 639-1 target language code.
         """
         if self._conn is None:
             await self.connect()
         assert self._conn is not None
-        h = self._compute_hash(title_en, author)
+        h = self._compute_hash(title_en, author, target_lang)
         async with self._write_lock:
             await self._conn.execute(
                 "INSERT OR REPLACE INTO translation_cache "
-                "(title_en_hash, title_en, author, title_es, source, confidence) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (h, title_en, author or None, title_es, source, confidence),
+                "(title_en_hash, title_en, author, title_es, source, confidence, target_lang) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (h, title_en, author or None, title_es, source, confidence, target_lang),
             )
             await self._conn.commit()
 
     async def invalidate_one(
-        self, title_en: str, author: Optional[str] = None
+        self, title_en: str, author: Optional[str] = None, target_lang: str = "es"
     ) -> bool:
         """Remove a single cache entry.
 
         Args:
             title_en: English title.
             author: Author name (optional).
+            target_lang: ISO 639-1 target language code.
 
         Returns:
             ``True`` if an entry was deleted, ``False`` otherwise.
@@ -249,7 +283,7 @@ class TranslationCache:
         if self._conn is None:
             await self.connect()
         assert self._conn is not None
-        h = self._compute_hash(title_en, author)
+        h = self._compute_hash(title_en, author, target_lang)
         cursor = await self._conn.execute(
             "DELETE FROM translation_cache WHERE title_en_hash = ?", (h,)
         )
@@ -334,33 +368,44 @@ class WikidataClient:
     # Public API
     # ------------------------------------------------------------------
 
-    async def get_spanish_title(
-        self, title_en: str, author: Optional[str] = None
+    async def get_translated_title(
+        self, title_en: str, author: Optional[str] = None, target_lang: str = "es"
     ) -> Optional[str]:
-        """Resolve a Spanish title via Wikidata.
+        """Resolve a translated title via Wikidata.
 
         Args:
-            title_en: English title.
+            title_en: English title (source language).
             author: Author name (optional).
+            target_lang: ISO 639-1 / Wikidata language tag for the target
+                         language (e.g. ``"es"``, ``"fr"``, ``"de"``).
 
         Returns:
-            Spanish title string, or ``None`` if not found / errored.
+            Translated title string, or ``None`` if not found / errored.
         """
         if not self._enabled:
             return None
 
-        result = await self._run_sparql_query(title_en, author)
+        result = await self._run_sparql_query(title_en, author, target_lang)
         if result is None and author and title_en.lower().endswith(author.lower()):
             stripped_title = title_en[: -len(author)].strip()
             if stripped_title:
                 self._logger.debug(
                     "Wikidata retry with stripped title: '%s'", stripped_title
                 )
-                result = await self._run_sparql_query(stripped_title, author)
+                result = await self._run_sparql_query(stripped_title, author, target_lang)
         return result
 
-    async def _run_sparql_query(
+    async def get_spanish_title(
         self, title_en: str, author: Optional[str] = None
+    ) -> Optional[str]:
+        """Resolve a Spanish title via Wikidata (backwards-compatible wrapper).
+
+        Delegates to :meth:`get_translated_title` with ``target_lang="es"``.
+        """
+        return await self.get_translated_title(title_en, author, target_lang="es")
+
+    async def _run_sparql_query(
+        self, title_en: str, author: Optional[str] = None, target_lang: str = "es"
     ) -> Optional[str]:
         escaped_title = self._escape_sparql(title_en)
         author_clause = ""
@@ -372,11 +417,11 @@ class WikidataClient:
             )
 
         query = (
-            "SELECT ?item ?label_es WHERE {"
+            "SELECT ?item ?label_target WHERE {"
             f"  ?item rdfs:label \"{escaped_title}\"@en."
             f"  {author_clause}"
-            "  ?item rdfs:label ?label_es."
-            '  FILTER(LANG(?label_es) = "es")'
+            "  ?item rdfs:label ?label_target."
+            f'  FILTER(LANG(?label_target) = "{target_lang}")'
             "} LIMIT 3"
         )
 
@@ -410,14 +455,14 @@ class WikidataClient:
             entity_resp.raise_for_status()
             entity_data = entity_resp.json()
 
-            label_es = (
+            label_target = (
                 entity_data.get("entities", {})
                 .get(qid, {})
                 .get("labels", {})
-                .get("es", {})
+                .get(target_lang, {})
                 .get("value")
             )
-            return label_es
+            return label_target
 
         except (
             httpx.HTTPError,
@@ -478,25 +523,31 @@ class GoogleBooksClient:
     # Public API
     # ------------------------------------------------------------------
 
-    async def get_spanish_title(
-        self, title_en: str, author: Optional[str] = None
+    async def get_translated_title(
+        self, title_en: str, author: Optional[str] = None, target_lang: str = "es"
     ) -> Optional[str]:
-        """Resolve a Spanish title via Google Books.
+        """Resolve a translated title via Google Books.
 
-        Three-phase lookup:
+        Multi-phase lookup, parametrised by target language:
+
         1. Search without langRestrict to find the book's
            canonical volume.
-        2. Look up author's works in Spanish and match by
+        2. Look up author's works in the target language and match by
            published date proximity.
-        3. Fallback: search by author alone with langRestrict=es
-           and pick the first Spanish result.
+        3. Fallback: search by author alone with langRestrict and
+           pick the first target-language result.
+        4. Unrestricted fallback: author search without langRestrict,
+           return first title that differs from the English input.
 
         Args:
             title_en: English title.
             author: Author name (optional).
+            target_lang: ISO 639-1 / Google Books language code for
+                         ``langRestrict`` and ``volumeInfo.language``
+                         (e.g. ``"es"``, ``"fr"``, ``"de"``).
 
         Returns:
-            Spanish title string, or ``None`` if not found / errored.
+            Translated title string, or ``None`` if not found / errored.
         """
         if not self._enabled or not self._api_key:
             return None
@@ -535,7 +586,7 @@ class GoogleBooksClient:
             canonical_vi = canonical_volume.get("volumeInfo", {})
             canonical_date = canonical_vi.get("publishedDate", "")
 
-            # ---- Phase 2: author search in Spanish, match by date -----
+            # ---- Phase 2: author search in target language, match by date --
             if author:
                 author_es_q = f'inauthor:"{author}"'
                 es_resp = await self._client.get(
@@ -543,7 +594,7 @@ class GoogleBooksClient:
                     params={
                         **base_params,
                         "q": author_es_q,
-                        "langRestrict": "es",
+                        "langRestrict": target_lang,
                         "maxResults": 20,
                     },
                     timeout=self._timeout,
@@ -556,7 +607,7 @@ class GoogleBooksClient:
 
                     for item in es_items:
                         vi = item.get("volumeInfo", {})
-                        if vi.get("language") != "es":
+                        if vi.get("language") != target_lang:
                             continue
                         es_date = vi.get("publishedDate", "")
                         if es_date and canonical_date:
@@ -571,7 +622,7 @@ class GoogleBooksClient:
                                     )
                                     return es_title
 
-            # ---- Phase 3: fallback – first Spanish result by author ---
+            # ---- Phase 3: fallback – first target-language result by author -
             if author:
                 author_es_q_fb = f'inauthor:"{author}"'
                 es_resp_fb = await self._client.get(
@@ -579,7 +630,7 @@ class GoogleBooksClient:
                     params={
                         **base_params,
                         "q": author_es_q_fb,
-                        "langRestrict": "es",
+                        "langRestrict": target_lang,
                         "maxResults": 20,
                     },
                     timeout=self._timeout,
@@ -591,7 +642,7 @@ class GoogleBooksClient:
 
                     for item in es_data_fb.get("items", []):
                         vi = item.get("volumeInfo", {})
-                        if vi.get("language") != "es":
+                        if vi.get("language") != target_lang:
                             continue
                         es_title = self._get_best_title(vi)
                         if es_title and es_title.lower() != title_en.lower():
@@ -601,6 +652,33 @@ class GoogleBooksClient:
                             )
                             return es_title
 
+            # ---- Phase 4: unrestricted fallback ---------------------------
+            if author:
+                author_any_q = f'inauthor:"{author}"'
+                any_resp = await self._client.get(
+                    self.BASE_URL,
+                    params={
+                        **base_params,
+                        "q": author_any_q,
+                        "maxResults": 20,
+                    },
+                    timeout=self._timeout,
+                )
+
+                if any_resp.status_code not in (429, 403):
+                    any_resp.raise_for_status()
+                    any_data = any_resp.json()
+
+                    for item in any_data.get("items", []):
+                        vi = item.get("volumeInfo", {})
+                        any_title = self._get_best_title(vi)
+                        if any_title and any_title.lower() != title_en.lower():
+                            self._logger.debug(
+                                "Google Books unrestricted fallback: '%s' -> '%s'",
+                                title_en, any_title,
+                            )
+                            return any_title
+
             return None
 
         except httpx.HTTPError as exc:
@@ -608,6 +686,15 @@ class GoogleBooksClient:
                 "Google Books lookup failed for '%s': %s", title_en, exc
             )
             return None
+
+    async def get_spanish_title(
+        self, title_en: str, author: Optional[str] = None
+    ) -> Optional[str]:
+        """Resolve a Spanish title via Google Books (backwards-compatible wrapper).
+
+        Delegates to :meth:`get_translated_title` with ``target_lang="es"``.
+        """
+        return await self.get_translated_title(title_en, author, target_lang="es")
 
     @staticmethod
     def _get_best_title(volume_info: dict) -> Optional[str]:
@@ -767,9 +854,12 @@ class TranslationPipeline:
         return unique
 
     async def translate(
-        self, title_en: str, author: Optional[str] = None
+        self,
+        title_en: str,
+        author: Optional[str] = None,
+        target_lang: "SearchLanguage | str | None" = None,
     ) -> Optional[TranslationResult]:
-        """Translate an English book title to Spanish.
+        """Translate an English book title to the target language.
 
         Cascades through cache → Wikidata → Google Books with silent
         fallback.  All title variants are tried against each phase
@@ -778,6 +868,8 @@ class TranslationPipeline:
         Args:
             title_en: English title (required, non-empty).
             author: Author name (optional, improves accuracy).
+            target_lang: Target ``SearchLanguage`` instance, ISO 639-1
+                         code string, or ``None`` (defaults to ``"es"``).
 
         Returns:
             ``TranslationResult`` or ``None`` if all phases fail.
@@ -785,16 +877,28 @@ class TranslationPipeline:
         if not title_en or not title_en.strip():
             return None
 
+        from app.core.languages import SearchLanguage as SL, resolve_language
+
+        if target_lang is None:
+            lang = resolve_language("es")
+        elif isinstance(target_lang, str):
+            lang = resolve_language(target_lang)
+        else:
+            lang = target_lang
+
+        lang_code = lang.wikidata_code  # ISO 639-1, same for both backends
+
         variants = self._title_variants(title_en)
 
         # ---- Phase 1: Local cache (all variants) ----------------------
         if self._cache is not None:
             for variant in variants:
                 try:
-                    result = await self._cache.get(variant, author)
+                    result = await self._cache.get(variant, author, target_lang=lang_code)
                     if result is not None:
                         self._logger.debug(
-                            "Cache hit for '%s' by %s", variant, author
+                            "Cache hit for '%s' by %s (lang=%s)",
+                            variant, author, lang_code,
                         )
                         return result
                 except Exception as exc:
@@ -804,16 +908,20 @@ class TranslationPipeline:
         if self._wikidata is not None:
             for variant in variants:
                 try:
-                    title_es = await self._wikidata.get_spanish_title(
-                        variant, author
+                    title_translated = await self._wikidata.get_translated_title(
+                        variant, author, target_lang=lang_code
                     )
-                    if title_es is not None and title_es.strip():
+                    if title_translated is not None and title_translated.strip():
                         if self._cache is not None:
                             await self._cache.set(
-                                variant, author, title_es, "wikidata", 0.95
+                                variant, author, title_translated, "wikidata", 0.95,
+                                target_lang=lang_code,
                             )
                         return TranslationResult(
-                            title_es=title_es, source="wikidata", confidence=0.95
+                            title_es=title_translated,
+                            source="wikidata",
+                            confidence=0.95,
+                            target_lang=lang_code,
                         )
                 except Exception as exc:
                     self._logger.warning("Wikidata phase error: %s", exc)
@@ -822,11 +930,11 @@ class TranslationPipeline:
         if self._google_books is not None:
             for variant in variants:
                 try:
-                    title_es = await self._google_books.get_spanish_title(
-                        variant, author
+                    title_translated = await self._google_books.get_translated_title(
+                        variant, author, target_lang=lang_code
                     )
-                    if title_es is not None and title_es.strip():
-                        cleaned = self._cleaner.clean(title_es)
+                    if title_translated is not None and title_translated.strip():
+                        cleaned = self._cleaner.clean(title_translated)
                         if cleaned:
                             if self._cache is not None:
                                 await self._cache.set(
@@ -835,11 +943,13 @@ class TranslationPipeline:
                                     cleaned,
                                     "google_books",
                                     0.70,
+                                    target_lang=lang_code,
                                 )
                             return TranslationResult(
                                 title_es=cleaned,
                                 source="google_books",
                                 confidence=0.70,
+                                target_lang=lang_code,
                             )
                 except Exception as exc:
                     self._logger.warning("Google Books phase error: %s", exc)
@@ -858,19 +968,20 @@ class TranslationPipeline:
         return {"entries": 0, "total_hits": 0}
 
     async def invalidate(
-        self, title_en: str, author: Optional[str] = None
+        self, title_en: str, author: Optional[str] = None, target_lang: str = "es"
     ) -> bool:
         """Invalidate a single cache entry.
 
         Args:
             title_en: English title.
             author: Author name (optional).
+            target_lang: ISO 639-1 target language code.
 
         Returns:
             ``True`` if an entry was deleted.
         """
         if self._cache is not None:
-            return await self._cache.invalidate_one(title_en, author)
+            return await self._cache.invalidate_one(title_en, author, target_lang)
         return False
 
 

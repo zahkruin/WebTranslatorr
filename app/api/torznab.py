@@ -63,6 +63,14 @@ from app.scraping.http_client import HttpClient
 from app.core.categories import CategoryMapper
 from app.services.cache import search_cache
 
+# In-memory download cache — avoids downloading the same file twice
+# (once for torrent generation, once for webseed delivery).
+# Key: "provider\x00id\x00fmt", Value: bytes
+# TTL: 10 minutes, cleaned on access.
+_download_cache: dict[str, tuple[float, bytes]] = {}
+_download_cache_lock = asyncio.Lock()
+_DOWNLOAD_CACHE_TTL = 600  # seconds
+
 # Provider registry: maps provider_id → Provider class
 _PROVIDER_CLASSES: dict[str, type] = {
     "ebookelo": EbookeloProvider,
@@ -286,6 +294,7 @@ async def _handle_torznab_request(
     author: str = "",
     title: str = "",
     lang: str = "",
+    server_url: str = "",
 ) -> Response:
     """
     Núcleo compartido de la lógica Torznab.
@@ -294,6 +303,12 @@ async def _handle_torznab_request(
     Usado por:
       - /api   (todos los providers)
       - /api/{provider_id}  (un solo provider)
+
+    Parámetros:
+        server_url: URL pública del servidor (scheme + host) derivada del
+                    request entrante.  Se usa para reescribir los enlaces
+                    de descarga para que apunten al host correcto en lugar
+                    de ``settings.EXTERNAL_URL`` (que puede ser localhost).
     """
     # Ejecutar búsqueda en todos los providers seleccionados en paralelo
     # con un timeout global para evitar que un provider lento bloquee todo
@@ -460,7 +475,7 @@ async def _handle_torznab_request(
 
         async def browse_provider(provider):
             try:
-                return await asyncio.wait_for(
+                results = await asyncio.wait_for(
                     provider.browse(
                         categories=parsed_cats,
                         offset=offset,
@@ -468,6 +483,38 @@ async def _handle_torznab_request(
                     ),
                     timeout=SEARCH_TIMEOUT_SECONDS,
                 )
+                # Fallback: if browse() returns empty, try a generic search
+                # so that Readarr validation doesn't fail for providers whose
+                # browse() doesn't match the homepage structure
+                if not results:
+                    logging.info(
+                        f"Provider {provider.provider_id} browse returned 0 results, "
+                        f"falling back to search with default query"
+                    )
+                    try:
+                        results = await asyncio.wait_for(
+                            provider.search(
+                                query="test",
+                                categories=parsed_cats,
+                                offset=0,
+                                limit=min(limit, 10),
+                            ),
+                            timeout=SEARCH_TIMEOUT_SECONDS,
+                        )
+                        if results:
+                            logging.info(
+                                f"Provider {provider.provider_id} search fallback: "
+                                f"{len(results)} results"
+                            )
+                    except asyncio.TimeoutError:
+                        logging.warning(
+                            f"Provider {provider.provider_id} search fallback timed out"
+                        )
+                    except Exception as e:
+                        logging.error(
+                            f"Provider {provider.provider_id} search fallback error: {e}"
+                        )
+                return results
             except asyncio.TimeoutError:
                 logging.warning(f"Provider {provider.provider_id} browse timed out")
                 return []
@@ -537,8 +584,42 @@ async def _handle_torznab_request(
     total = len(all_results)
     paginated = all_results[offset:offset + limit]
 
+    # Rewrite download URLs so they point to the actual server address
+    # that the client used to reach us, rather than settings.EXTERNAL_URL
+    # (which might be http://localhost:9811 and unreachable from other hosts).
+    if server_url:
+        _rewrite_download_urls(paginated, server_url)
+
     xml = TorznabMapper.results_to_xml(paginated, offset, total)
     return Response(content=xml, media_type="application/xml")
+
+
+def _rewrite_download_urls(results: list, server_url: str) -> None:
+    """Rewrite ``download_url`` on every result to use *server_url*.
+
+    Providers build download URLs using ``settings.EXTERNAL_URL``, but that
+    value may point to ``localhost`` or an internal address.  We replace the
+    scheme + host portion of every download URL with the *server_url*
+    derived from the incoming request's ``Host`` header so that Readarr
+    (or any other client on a different machine) can actually reach us.
+    """
+    configured = (settings.EXTERNAL_URL or "").rstrip("/")
+    target = server_url.rstrip("/")
+
+    # Skip if they already match (nothing to rewrite)
+    if not configured or configured == target:
+        return
+
+    for r in results:
+        if r.download_url and r.download_url.startswith(configured):
+            r.download_url = target + r.download_url[len(configured):]
+
+
+def _server_url_from_request(request: Request) -> str:
+    """Derive the public base URL from the incoming request's scheme + Host header."""
+    scheme = request.url.scheme or "http"
+    host = request.headers.get("host", "")
+    return f"{scheme}://{host}"
 
 
 # ---------------------------------------------------------------------------
@@ -619,11 +700,13 @@ async def torznab_api(
         author=author,
         title=title,
         lang=lang,
+        server_url=_server_url_from_request(request),
     )
 
 
 @router.get("/api/download")
 async def download_proxy(
+    request: Request,
     provider: str = Query(..., description="ID del provider"),
     id: str = Query(..., description="ID interno del contenido"),
     fmt: str = Query("epub", description="Formato del archivo"),
@@ -632,53 +715,65 @@ async def download_proxy(
     Proxy de descarga. Los *Arr llaman a este endpoint cuando
     el usuario selecciona un resultado.
 
-    Para book providers (no-video), genera un archivo .torrent
-    on-the-fly que envuelve el EPUB/PDF/MOBI con un web seed.
-    Readarr espera siempre un archivo .torrent válido de los
-    indexers Torznab y falla si recibe otro tipo de archivo.
+    Genera un archivo .torrent por cada descarga.  El torrent contiene
+    los hashes de pieza reales y un web seed que apunta al archivo.
+    Un watcher externo lee el torrent y descarga el EPUB/PDF/MOBI real.
     """
+    server_url = _server_url_from_request(request)
+
+    cache_key = f"{provider}\x00{id}\x00{fmt}"
     try:
         prov = registry.get(provider)
-
         caps = prov.get_capabilities()
         is_video = caps.supports_movie_search or caps.supports_tv_search
-
         internal_id = id if provider != "ebookelo" else f"{id}/{fmt}"
 
         final_url = await prov.get_download_url(internal_id, fmt=fmt)
-
         if not final_url:
             raise Exception("No URL found")
 
-        http_client = _get_http_client()
-        file_bytes = await http_client.download_file(final_url, use_scraper=getattr(prov, 'is_zipped', False) or provider == "annasarchive")
+        ext = fmt if fmt in ("epub", "mobi", "pdf") else "epub"
 
-        if getattr(prov, 'is_zipped', False):
-            extracted = ZipExtractor.extract_epub_from_memory(file_bytes)
-            if extracted:
-                file_bytes = extracted
-                fmt = "epub"
+        http_client = _get_http_client()
+
+        async with _download_cache_lock:
+            now = _time.monotonic()
+            expired = [k for k, (ts, _) in _download_cache.items() if now - ts > _DOWNLOAD_CACHE_TTL]
+            for k in expired:
+                del _download_cache[k]
+
+            cached_entry = _download_cache.get(cache_key)
+            if cached_entry is not None:
+                _, file_bytes = cached_entry
+            else:
+                file_bytes = await http_client.download_file(
+                    final_url,
+                    use_scraper=getattr(prov, 'is_zipped', False) or provider == "annasarchive",
+                )
+                if getattr(prov, 'is_zipped', False):
+                    extracted = ZipExtractor.extract_epub_from_memory(file_bytes)
+                    if extracted:
+                        file_bytes = extracted
+                        fmt = "epub"
+                _download_cache[cache_key] = (_time.monotonic(), file_bytes)
 
         if is_video:
             return Response(
                 content=file_bytes,
                 media_type="application/x-bittorrent",
-                headers={
-                    "Content-Disposition": 'attachment; filename="download.torrent"'
-                }
+                headers={"Content-Disposition": 'attachment; filename="download.torrent"'}
             )
 
-        ext = fmt if fmt in ("epub", "mobi", "pdf") else "epub"
         file_name = f"{prov.display_name}_{id}.{ext}"
-
         web_seed_url = (
-            f"{settings.EXTERNAL_URL.rstrip('/')}/api/download-content"
+            f"{server_url.rstrip('/')}/api/download-content"
             f"?provider={provider}&id={id}&fmt={fmt}"
         )
 
         torrent_bytes, info_hash, magnet_uri = generate_torrent(
             file_name=file_name,
             file_data=file_bytes,
+            announce_url="udp://tracker.opentrackr.org:1337/announce",
             web_seed_url=web_seed_url,
             comment=f"WebTranslatorr book download: {prov.display_name}",
         )
@@ -700,6 +795,7 @@ async def download_proxy(
 
 @router.get("/api/download-content")
 async def download_content(
+    request: Request,
     provider: str = Query(..., description="ID del provider"),
     id: str = Query(..., description="ID interno del contenido"),
     fmt: str = Query("epub", description="Formato del archivo"),
@@ -708,47 +804,94 @@ async def download_content(
     Endpoint interno para el web seed del torrent.
     Devuelve el contenido real (EPUB/PDF/MOBI) para que
     el cliente torrent lo descargue via web seed.
+
+    Soporta HTTP Range requests (necesario para qBittorrent/libtorrent).
+
+    Si el archivo fue cacheado por :func:`download_proxy`, se
+    sirve desde la caché para evitar una segunda descarga.
     """
-    try:
+    cache_key = f"{provider}\x00{id}\x00{fmt}"
+    range_header = request.headers.get("range", "")
+    logging.info(
+        "download-content request: provider=%s id=%s client=%s range=%s",
+        provider, id, request.client.host if request.client else "?",
+        range_header[:80] if range_header else "none",
+    )
+
+    async def _get_file_bytes() -> bytes:
         prov = registry.get(provider)
-
         internal_id = id if provider != "ebookelo" else f"{id}/{fmt}"
-
         final_url = await prov.get_download_url(internal_id, fmt=fmt)
-
         if not final_url:
             raise Exception("No URL found")
-
         http_client = _get_http_client()
-        file_bytes = await http_client.download_file(final_url, use_scraper=getattr(prov, 'is_zipped', False) or provider == "annasarchive")
-
+        data = await http_client.download_file(
+            final_url,
+            use_scraper=getattr(prov, 'is_zipped', False) or provider == "annasarchive",
+        )
         if getattr(prov, 'is_zipped', False):
-            extracted = ZipExtractor.extract_epub_from_memory(file_bytes)
+            extracted = ZipExtractor.extract_epub_from_memory(data)
             if extracted:
-                file_bytes = extracted
-                fmt = "epub"
+                data = extracted
+        return data
+
+    try:
+        # Serve from cache if available
+        file_bytes: bytes | None = None
+        async with _download_cache_lock:
+            cached_entry = _download_cache.get(cache_key)
+            if cached_entry is not None:
+                _, file_bytes = cached_entry
+                # Keep in cache — torrent clients make multiple Range requests
+                logging.debug(f"Serving download from cache: {provider}/{id}")
+
+        if file_bytes is None:
+            file_bytes = await _get_file_bytes()
 
         content_types = {
             "epub": "application/epub+zip",
             "mobi": "application/x-mobipocket-ebook",
             "pdf": "application/pdf",
         }
-
         ext = fmt if fmt in ("epub", "mobi", "pdf") else "epub"
+        total_size = len(file_bytes)
+
+        # HTTP Range request support (required for torrent webseed)
+        if range_header:
+            try:
+                unit, _, ranges = range_header.partition("=")
+                if unit.strip().lower() == "bytes" and ranges:
+                    start_str, _, end_str = ranges.partition("-")
+                    start = int(start_str.strip()) if start_str.strip() else 0
+                    end = int(end_str.strip()) if end_str.strip() else total_size - 1
+                    if start >= total_size:
+                        return Response(status_code=416)
+                    end = min(end, total_size - 1)
+                    chunk = file_bytes[start:end + 1]
+                    return Response(
+                        content=chunk,
+                        status_code=206,
+                        media_type=content_types.get(ext, "application/octet-stream"),
+                        headers={
+                            "Content-Range": f"bytes {start}-{end}/{total_size}",
+                            "Content-Length": str(len(chunk)),
+                            "Accept-Ranges": "bytes",
+                        }
+                    )
+            except (ValueError, IndexError):
+                pass
 
         return Response(
             content=file_bytes,
-            media_type=content_types.get(fmt, "application/octet-stream"),
+            media_type=content_types.get(ext, "application/octet-stream"),
             headers={
-                "Content-Disposition": f'attachment; filename="download.{ext}"'
+                "Content-Length": str(total_size),
+                "Accept-Ranges": "bytes",
             }
         )
     except Exception as e:
-        logging.error(f"Error en descarga de contenido: {e}")
-        return Response(
-            content=TorznabErrors.server_error(str(e)),
-            media_type="application/xml"
-        )
+        logging.error(f"Error en download-content: {e}")
+        return Response(status_code=500)
 
 
 @router.get("/api/{provider_id}")
@@ -846,6 +989,38 @@ async def provider_torznab_api(
         author=author,
         title=title,
         lang=lang,
+        server_url=_server_url_from_request(request),
+    )
+
+
+# Prowlarr-compatible route: /{provider_id}/api?t=caps&apikey=...
+# Readarr adds "/api" to the indexer baseUrl, so we provide
+# /{provider_id} as baseUrl → Readarr calls /{provider_id}/api?t=caps
+@router.get("/{provider_id}/api")
+async def provider_torznab_api_prowlarr(
+    provider_id: str,
+    request: Request,
+    t: str = Query("", description="Función: caps|search|tvsearch|movie|book"),
+    q: str = Query("", description="Query de búsqueda"),
+    cat: str = Query("", description="Categorías (comma-separated)"),
+    apikey: str = Query("", description="API Key"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    imdbid: str = Query("", description="IMDb ID (ej: tt1234567)"),
+    tvdbid: str = Query("", description="TVDB ID"),
+    season: str = Query("", description="Número de temporada"),
+    ep: str = Query("", description="Número de episodio"),
+    author: str = Query("", description="Autor (book-search)"),
+    title: str = Query("", description="Título (book-search)"),
+    lang: str = Query("", description="Idioma destino (es, en, fr, de, it, pt)"),
+):
+    """Prowlarr-compatible route — delegates to /api/{provider_id} handler."""
+    return await provider_torznab_api(
+        provider_id=provider_id,
+        request=request,
+        t=t, q=q, cat=cat, apikey=apikey, offset=offset, limit=limit,
+        imdbid=imdbid, tvdbid=tvdbid, season=season, ep=ep,
+        author=author, title=title, lang=lang,
     )
 
 

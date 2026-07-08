@@ -7,13 +7,11 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
-### Added
-- **BookSee provider**: scraping de en.booksee.org (2.4M libros, PDF, sin protecciones)
-- **OceanOfPDF provider**: scraping de oceanofpdf.com (WordPress, PDF/EPUB/MOBI, sin protecciones)
-
 ## [0.3.0] — 2026-07-01
 
 ### Added
+- **BookSee provider**: scraping de en.booksee.org (2.4M libros, PDF, sin protecciones)
+- **OceanOfPDF provider**: scraping de oceanofpdf.com (WordPress, PDF/EPUB/MOBI, sin protecciones)
 - **Panel de administración web**: frontend HTML/JS/CSS autocontenido accesible en `/` para gestionar providers, API keys y configuración sin editar `.env` ni reiniciar la aplicación. Incluye 3 pestañas: Providers (tabla con toggles enable/disable, edición de dominio, filtro por tipo, reload registry), Settings (API keys con toggle visibilidad, URLs externas, proxy), y Readarr (gestión de instancias, test de conexión, sincronización one-click).
 - **Persistencia de configuración en SQLite**: nueva capa `app/persistence/` con esquema de 3 tablas (`provider_config`, `settings`, `readarr_instances`). La configuración de providers (habilitado/deshabilitado, dominio) y las settings globales (API key, URLs, API keys externas) se almacenan en `data/webtranslatorr.db` y se gestionan en runtime.
 - **Migración automática env vars → SQLite**: en el primer arranque, todas las variables de entorno existentes se migran automáticamente a SQLite. Arranques posteriores usan la DB como fuente de verdad, con fallback a env vars para claves no presentes en DB.

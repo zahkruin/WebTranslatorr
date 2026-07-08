@@ -59,7 +59,7 @@ services:
       WTR_ESPAEBOOK_DOMAIN: ${WTR_ESPAEBOOK_DOMAIN:-https://espaebook.cc}
       WTR_HOLAEBOOK_DOMAIN: ${WTR_HOLAEBOOK_DOMAIN:-https://holaebook.com}
       WTR_ELEJANDRIA_DOMAIN: ${WTR_ELEJANDRIA_DOMAIN:-https://www.elejandria.com}
-      WTR_ANNASARCHIVE_DOMAIN: ${WTR_ANNASARCHIVE_DOMAIN:-https://annas-archive.org}
+      WTR_ANNASARCHIVE_DOMAIN: ${WTR_ANNASARCHIVE_DOMAIN:-https://annas-archive.gl}
       WTR_GUTENBERG_DOMAIN: ${WTR_GUTENBERG_DOMAIN:-https://gutenberg.org}
       WTR_EPUBFLIX1_DOMAIN: ${WTR_EPUBFLIX1_DOMAIN:-https://epubflix1.com}
       WTR_LIBGEN_DOMAIN: ${WTR_LIBGEN_DOMAIN:-https://libgen.ee}

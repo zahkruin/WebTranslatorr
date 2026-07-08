@@ -2,11 +2,13 @@ import re
 import logging
 from typing import Optional
 from datetime import datetime
+from urllib.parse import urlencode, quote_plus
 
 from bs4 import BeautifulSoup
 
 from app.providers.base import BaseProvider
 from app.core.models import SearchResult
+from app.core.exceptions import ProviderBlockedError
 from config import settings
 
 
@@ -26,8 +28,79 @@ class AnnasArchiveProvider(BaseProvider):
             display_name="Anna's Archive",
             base_url=domain,
             http_client=http_client,
-            categories=[7000, 7020, 8000, 8010]
+            categories=[7000, 7020, 8000, 8010],
+            query_language="es",
         )
+
+    async def _fetch(self, url: str, use_flaresolverr_fallback: bool = True):
+        try:
+            return await self.http_client.get(url, use_scraper=True, rate_limit=0.5)
+        except Exception:
+            if use_flaresolverr_fallback and settings.FLARESOLVERR_URL:
+                self.logger.warning("cloudscraper failed, falling back to FlareSolverr")
+                try:
+                    return await self.http_client.get(url, use_flaresolverr=True, rate_limit=0.5)
+                except Exception as e2:
+                    self.logger.error(f"FlareSolverr fallback also failed: {e2}")
+            raise
+
+    def _is_cloudflare_challenge(self, soup: BeautifulSoup) -> bool:
+        title_text = (soup.title.get_text().lower() if soup.title else '')
+        if 'just a moment' in title_text:
+            return True
+        if soup.select_one('#challenge-error-text, .cf-browser-verification, #cf-challenge-running'):
+            return True
+        return False
+
+    def _extract_title(self, a_tag) -> str | None:
+        for h in ('h3', 'h2', 'h1', 'h4'):
+            el = a_tag.find(h)
+            if el:
+                return el.get_text(strip=True)
+
+        for sel in ('div.text-xl', 'div.font-bold', 'div.truncate', 'span.text-lg'):
+            el = a_tag.select_one(sel)
+            if el:
+                return el.get_text(strip=True)
+
+        for el in a_tag.find_all(['div', 'span']):
+            text = el.get_text(strip=True)
+            if len(text) >= 3:
+                return text
+
+        text = a_tag.get_text(strip=True)
+        return text if len(text) >= 3 else None
+
+    def _find_download_url(self, soup) -> str | None:
+        for a in soup.select('a.js-download-link'):
+            text = a.get_text(strip=True).lower()
+            href = a.get('href', '')
+            if any(kw in text for kw in ('slow', 'partner', 'libgen', 'download')):
+                return self._normalize_link(href)
+
+        for a in soup.select('a.js-download-link'):
+            href = a.get('href', '')
+            if href:
+                return self._normalize_link(href)
+
+        for a in soup.select('a[data-download], a[data-partner]'):
+            return self._normalize_link(a['href'])
+
+        for a in soup.find_all('a', href=True):
+            text = a.get_text(strip=True).lower()
+            if any(kw in text for kw in ('download', 'libgen', 'ipfs', 'slow', 'partner')):
+                return self._normalize_link(a['href'])
+
+        for a in soup.find_all('a', href=True):
+            if '/download/' in a['href'] or re.search(r'libgen\.\w+', a['href']):
+                return self._normalize_link(a['href'])
+
+        return None
+
+    def _normalize_link(self, href: str) -> str:
+        if href.startswith('/'):
+            return f"{self.base_url}{href}"
+        return href
 
     async def search(
         self,
@@ -51,21 +124,25 @@ class AnnasArchiveProvider(BaseProvider):
             return []
 
         results = []
-        search_url = f"{self.base_url}/search?q={query_to_use}&lang=es&ext=epub"
+        lang_code = self.query_language or "es"
+        params = urlencode({'q': query_to_use, 'lang': lang_code, 'ext': 'epub'}, quote_via=quote_plus)
+        search_url = f"{self.base_url}/search?{params}"
 
         try:
-            resp = await self.http_client.get(search_url, use_scraper=True)
+            resp = await self._fetch(search_url)
             soup = BeautifulSoup(resp.text, 'lxml')
+
+            if self._is_cloudflare_challenge(soup):
+                self.logger.error(f"Cloudflare challenge detected for search: {search_url}")
+                return []
 
             seen_urls = set()
             for a in soup.select('a[href*="/md5/"]'):
                 href = a.get('href')
 
-                title_div = a.find('h3') or a.select_one('div.text-xl, div.font-bold')
-                if not title_div:
+                title_text = self._extract_title(a)
+                if not title_text:
                     continue
-
-                title_text = title_div.get_text(strip=True)
 
                 if not href or href in seen_urls:
                     continue
@@ -97,26 +174,16 @@ class AnnasArchiveProvider(BaseProvider):
         detail_url = f"{self.base_url}/md5/{internal_id}"
 
         try:
-            resp = await self.http_client.get(detail_url, use_scraper=True)
+            resp = await self._fetch(detail_url)
             soup = BeautifulSoup(resp.text, 'lxml')
 
-            # Preferred: "Slow Partner Server" links
-            for a in soup.select('a.js-download-link'):
-                text = a.get_text(strip=True).lower()
-                href = a.get('href', '')
+            if self._is_cloudflare_challenge(soup):
+                self.logger.error(f"Cloudflare challenge detected for detail: {detail_url}")
+                return None
 
-                if 'slow partner server' in text or 'slow' in text or 'libgen' in text:
-                    if href.startswith('/'):
-                        return f"{self.base_url}{href}"
-                    return href
-
-            # Fallback: any /download/ or libgen.li link
-            for a in soup.find_all('a', href=True):
-                if '/download/' in a['href'] or 'libgen.li' in a['href']:
-                    href = a['href']
-                    if href.startswith('/'):
-                        return f"{self.base_url}{href}"
-                    return href
+            download_url = self._find_download_url(soup)
+            if download_url:
+                return download_url
 
             self.logger.warning(f"No se encontró enlace de descarga para {internal_id}")
         except Exception as e:
@@ -132,7 +199,6 @@ class AnnasArchiveProvider(BaseProvider):
         limit: int = 50,
         **kwargs
     ) -> list[SearchResult]:
-        """RSS/browse mode: scrape Anna's Archive homepage for recent/top books."""
         from bs4 import BeautifulSoup
         from datetime import datetime
 
@@ -141,19 +207,21 @@ class AnnasArchiveProvider(BaseProvider):
         url = f"{self.base_url}/"
 
         try:
-            resp = await self.http_client.get(url, use_scraper=True)
+            resp = await self._fetch(url)
             soup = BeautifulSoup(resp.text, 'lxml')
+
+            if self._is_cloudflare_challenge(soup):
+                self.logger.error(f"Cloudflare challenge detected for browse: {url}")
+                return []
 
             seen_urls = set()
             for a in soup.select('a[href*="/md5/"]'):
                 href = a.get('href')
-                title_div = a.find('h3') or a.select_one('div.text-xl, div.font-bold')
-                if not title_div:
-                    title_text = a.get_text(strip=True)
-                else:
-                    title_text = title_div.get_text(strip=True)
+                title_text = self._extract_title(a)
+                if not title_text:
+                    continue
 
-                if not href or not title_text or href in seen_urls:
+                if not href or href in seen_urls:
                     continue
                 if len(title_text) < 3:
                     continue
@@ -177,3 +245,13 @@ class AnnasArchiveProvider(BaseProvider):
             self.logger.error(f"Anna's Archive browse error: {e}")
 
         return results[offset:]
+
+    async def is_healthy(self) -> bool:
+        try:
+            resp = await self.http_client.get(self.base_url, use_scraper=True, rate_limit=0.5)
+            if resp.status_code != 200:
+                return False
+            soup = BeautifulSoup(resp.text, 'lxml')
+            return not self._is_cloudflare_challenge(soup)
+        except Exception:
+            return False

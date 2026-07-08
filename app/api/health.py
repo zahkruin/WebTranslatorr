@@ -10,8 +10,8 @@ from app.core.version import get_version
 router = APIRouter()
 
 
-@router.get("/")
-async def root():
+@router.get("/api/root", include_in_schema=False)
+async def api_root():
     """
     Root endpoint: used by *Arr apps for basic connectivity checks.
     Returns a simple JSON response so Readarr/Radarr/Sonarr can detect

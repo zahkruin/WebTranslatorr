@@ -23,6 +23,11 @@ class ScrapingError(WebTranslatorrError):
     pass
 
 
+class ProviderBlockedError(ScrapingError):
+    """Raised when a provider returns a bot/challenge page instead of content."""
+    pass
+
+
 class DownloadError(WebTranslatorrError):
     """Raised when a download fails."""
     pass

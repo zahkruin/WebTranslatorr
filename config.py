@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     ESPAEBOOK_DOMAIN: str = "https://espaebook.cc"
     HOLAEBOOK_DOMAIN: str = "https://holaebook.com"
     ELEJANDRIA_DOMAIN: str = "https://www.elejandria.com"
-    ANNASARCHIVE_DOMAIN: str = "https://annas-archive.org"
+    ANNASARCHIVE_DOMAIN: str = "https://annas-archive.gl"
     GUTENBERG_DOMAIN: str = "https://gutenberg.org"
     # New provider domains
     EPUBFLIX1_DOMAIN: str = "https://epubflix1.com"
@@ -80,6 +80,16 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_SECOND: float = 2.0
     MAX_RETRIES: int = 3
     REQUEST_TIMEOUT: int = 30
+
+    # FlareSolverr (bypass Cloudflare Turnstile vía navegador headless externo)
+    # Dejar vacío para deshabilitar. Ejemplo: "http://192.168.0.102:8191"
+    FLARESOLVERR_URL: str = ""
+
+    # Torrent Blackhole watcher — monitors a directory for .torrent files
+    # dropped by Readarr and downloads the actual files via webseed.
+    # Dejar vacío para deshabilitar.
+    BLACKHOLE_DIR: str = ""
+    BLACKHOLE_OUTPUT_DIR: str = ""  # default: same as BLACKHOLE_DIR
 
     # Cache
     CACHE_ENABLED: bool = True

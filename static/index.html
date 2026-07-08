@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebTranslatorr Admin</title>
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-content">
+            <div class="header-left">
+                <h1 class="app-title">WebTranslatorr <span class="app-subtitle">Admin</span></h1>
+            </div>
+            <div class="header-right">
+                <span class="version-badge">v<span id="app-version">0.2.11</span></span>
+                <a href="https://github.com/sergiolpz/WebTranslatorr" target="_blank" rel="noopener" class="github-link" title="GitHub">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation tabs -->
+    <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="providers">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/>
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+            </svg>
+            Providers
+        </button>
+        <button class="tab-btn" data-tab="settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+            </svg>
+            Settings
+        </button>
+        <button class="tab-btn" data-tab="readarr">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                <line x1="6" y1="6" x2="6.01" y2="6"/>
+                <line x1="6" y1="18" x2="6.01" y2="18"/>
+            </svg>
+            Readarr
+        </button>
+    </nav>
+
+    <!-- Main content -->
+    <main class="app-main">
+        <!-- Providers Panel -->
+        <section id="panel-providers" class="tab-panel active">
+            <div class="panel-header">
+                <h2 class="panel-title">Provider Registry</h2>
+                <div class="provider-filter">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="books">
+                        <span class="badge badge-books">Books</span>
+                    </button>
+                    <button class="filter-btn" data-filter="video">
+                        <span class="badge badge-video">Video</span>
+                    </button>
+                </div>
+            </div>
+            <div id="providers-loader" class="loader-container">
+                <div class="spinner"></div>
+                <span>Loading providers...</span>
+            </div>
+            <div id="providers-error" class="message message-error hidden"></div>
+            <div id="providers-empty" class="message message-info hidden">No providers found.</div>
+            <div id="providers-table-wrapper" class="table-wrapper hidden">
+                <table class="data-table" id="providers-table">
+                    <thead>
+                        <tr>
+                            <th>Provider ID</th>
+                            <th>Display Name</th>
+                            <th>Type</th>
+                            <th>Enabled</th>
+                            <th>Domain</th>
+                            <th>Test</th>
+                        </tr>
+                    </thead>
+                    <tbody id="providers-tbody">
+                    </tbody>
+                </table>
+            </div>
+            <div class="panel-actions">
+                <button id="reload-registry-btn" class="btn btn-secondary" title="Reload all providers into the registry">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <polyline points="1 20 1 14 7 14"/>
+                        <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                    </svg>
+                    Reload Registry
+                </button>
+                <button id="test-all-btn" class="btn btn-secondary" title="Run connectivity test on all enabled providers">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                    Test All Providers
+                </button>
+                <span id="test-all-progress" class="feedback-text hidden"></span>
+                <span id="reload-feedback" class="feedback-text hidden"></span>
+            </div>
+        </section>
+
+        <!-- Settings Panel -->
+        <section id="panel-settings" class="tab-panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Application Settings</h2>
+            </div>
+            <div id="settings-loader" class="loader-container">
+                <div class="spinner"></div>
+                <span>Loading settings...</span>
+            </div>
+            <div id="settings-error" class="message message-error hidden"></div>
+            <div id="settings-empty" class="message message-info hidden">No settings configured.</div>
+            <div id="settings-form" class="settings-form hidden">
+                <div class="setting-group" data-key="api_key">
+                    <label class="setting-label" for="setting-api_key">API Key</label>
+                    <div class="input-with-toggle">
+                        <input type="password" id="setting-api_key" class="setting-input" placeholder="API key for Torznab endpoints">
+                        <button type="button" class="toggle-visibility-btn" data-target="setting-api_key" title="Show/hide API key">
+                            <svg class="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <button type="button" class="btn btn-save-setting" data-key="api_key">Save</button>
+                    <span class="save-feedback hidden" data-key="api_key">&#10003;</span>
+                </div>
+                <div class="setting-group" data-key="external_url">
+                    <label class="setting-label" for="setting-external_url">External URL</label>
+                    <input type="text" id="setting-external_url" class="setting-input" placeholder="https://your-domain.com">
+                    <button type="button" class="btn btn-save-setting" data-key="external_url">Save</button>
+                    <span class="save-feedback hidden" data-key="external_url">&#10003;</span>
+                </div>
+                <div class="setting-group" data-key="tmdb_api_key">
+                    <label class="setting-label" for="setting-tmdb_api_key">TMDB API Key</label>
+                    <div class="input-with-toggle">
+                        <input type="password" id="setting-tmdb_api_key" class="setting-input" placeholder="Your TMDB API key">
+                        <button type="button" class="toggle-visibility-btn" data-target="setting-tmdb_api_key" title="Show/hide TMDB API key">
+                            <svg class="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <button type="button" class="btn btn-save-setting" data-key="tmdb_api_key">Save</button>
+                    <span class="save-feedback hidden" data-key="tmdb_api_key">&#10003;</span>
+                </div>
+                <div class="setting-group" data-key="google_books_api_key">
+                    <label class="setting-label" for="setting-google_books_api_key">Google Books API Key</label>
+                    <div class="input-with-toggle">
+                        <input type="password" id="setting-google_books_api_key" class="setting-input" placeholder="Your Google Books API key">
+                        <button type="button" class="toggle-visibility-btn" data-target="setting-google_books_api_key" title="Show/hide Google Books API key">
+                            <svg class="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <button type="button" class="btn btn-save-setting" data-key="google_books_api_key">Save</button>
+                    <span class="save-feedback hidden" data-key="google_books_api_key">&#10003;</span>
+                </div>
+                <div class="setting-group" data-key="http_proxy">
+                    <label class="setting-label" for="setting-http_proxy">HTTP Proxy</label>
+                    <input type="text" id="setting-http_proxy" class="setting-input" placeholder="http://proxy:8080 (leave empty for none)">
+                    <button type="button" class="btn btn-save-setting" data-key="http_proxy">Save</button>
+                    <span class="save-feedback hidden" data-key="http_proxy">&#10003;</span>
+                </div>
+                <div id="settings-global-feedback" class="message hidden"></div>
+            </div>
+        </section>
+
+        <!-- Readarr Panel -->
+        <section id="panel-readarr" class="tab-panel">
+            <div class="panel-header">
+                <h2 class="panel-title">Readarr Instances</h2>
+            </div>
+
+            <!-- Add instance form -->
+            <div class="card add-instance-card">
+                <h3 class="card-title">Add New Instance</h3>
+                <form id="add-readarr-form" class="add-readarr-form" autocomplete="off">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="readarr-name" class="form-label">Name</label>
+                            <input type="text" id="readarr-name" class="form-input" placeholder="My Readarr" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="readarr-url" class="form-label">URL</label>
+                            <input type="url" id="readarr-url" class="form-input" placeholder="http://localhost:8787" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="readarr-api-key" class="form-label">API Key</label>
+                            <input type="password" id="readarr-api-key" class="form-input" placeholder="Readarr API key" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="readarr-external-url" class="form-label">WebTranslatorr URL <span style="font-weight:normal;color:var(--muted);">(optional — how Readarr reaches WTR)</span></label>
+                            <input type="url" id="readarr-external-url" class="form-input" placeholder="http://192.168.0.10:9811">
+                        </div>
+                        <div class="form-group form-actions">
+                            <button type="submit" class="btn btn-primary">Add Instance</button>
+                        </div>
+                    </div>
+                </form>
+                <div id="add-readarr-feedback" class="message hidden"></div>
+            </div>
+
+            <!-- Instances list -->
+            <div id="readarr-loader" class="loader-container">
+                <div class="spinner"></div>
+                <span>Loading instances...</span>
+            </div>
+            <div id="readarr-error" class="message message-error hidden"></div>
+            <div id="readarr-empty" class="message message-info hidden">
+                No Readarr instances configured. Add one above to get started.
+            </div>
+            <div id="readarr-instances" class="instances-grid">
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <p>WebTranslatorr Admin &mdash; Torznab &amp; Newznab indexer proxy for book providers</p>
+        <p class="footer-muted">Served as static files by FastAPI</p>
+    </footer>
+
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>

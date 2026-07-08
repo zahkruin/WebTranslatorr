@@ -28,9 +28,12 @@ class BookseeProvider(BaseProvider):
     def __init__(self, http_client, domain_resolver=None):
         domain = settings.BOOKSEE_DOMAIN
         if domain_resolver:
-            active_domain = domain_resolver.get_current("booksee")
-            if active_domain:
-                domain = active_domain
+            try:
+                active_domain = domain_resolver.get_current("booksee")
+                if active_domain:
+                    domain = active_domain
+            except ValueError:
+                pass  # Provider not yet registered for domain resolution
 
         super().__init__(
             provider_id="booksee",

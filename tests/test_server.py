@@ -50,7 +50,7 @@ class TestCreateApp:
         assert app.title == "WebTranslatorr"
         # Version is read from VERSION file at runtime; in tests without
         # the file present it falls back to "0.0.0"
-        assert app.version in ("0.1.2", "0.0.0")
+        assert app.version in ("0.1.2", "0.0.0", "0.2.11")
 
     def test_has_health_route(self):
         """The app should have the /health endpoint registered."""

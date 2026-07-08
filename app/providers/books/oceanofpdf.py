@@ -47,9 +47,12 @@ class OceanOfPDFProvider(BaseProvider):
     def __init__(self, http_client, domain_resolver=None):
         domain = settings.OCEANOFPDF_DOMAIN
         if domain_resolver:
-            active_domain = domain_resolver.get_current("oceanofpdf")
-            if active_domain:
-                domain = active_domain
+            try:
+                active_domain = domain_resolver.get_current("oceanofpdf")
+                if active_domain:
+                    domain = active_domain
+            except ValueError:
+                pass  # Provider not yet registered for domain resolution
 
         super().__init__(
             provider_id="oceanofpdf",

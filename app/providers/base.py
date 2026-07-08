@@ -21,16 +21,18 @@ class BaseProvider(ABC):
     Clase base abstracta para todos los providers.
     """
 
-    def __init__(self, http_client: HttpClient, provider_id: str = None, display_name: str = None, base_url: str = None, categories: list[int] = None, **kwargs):
+    def __init__(self, http_client: HttpClient, provider_id: str = None, display_name: str = None, base_url: str = None, categories: list[int] = None, query_language: Optional[str] = None, **kwargs):
         self.http_client = http_client
         self.provider_id = provider_id or self.__class__.__name__.lower()
         self.display_name = display_name or self.__class__.__name__
         self.base_url = base_url or ""
         self.categories = categories or [7000, 7020, 8000, 8010]
+        self.query_language = query_language
         self.logger = logging.getLogger(f"provider.{self.provider_id}")
 
     def get_capabilities(self) -> ProviderCapabilities:
         """Declara qué categorías y parámetros soporta este provider."""
+        langs = [self.query_language] if self.query_language else ["es"]
         return ProviderCapabilities(
             provider_id=self.provider_id,
             display_name=self.display_name,
@@ -38,7 +40,9 @@ class BaseProvider(ABC):
             supported_search_params=["q"],
             supports_movie_search=False,
             supports_tv_search=False,
-            supports_book_search=True
+            supports_book_search=True,
+            query_language=self.query_language,
+            supported_languages=langs,
         )
 
     @abstractmethod

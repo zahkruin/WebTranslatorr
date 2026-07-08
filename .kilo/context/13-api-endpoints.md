@@ -205,6 +205,146 @@ Ejecuta un health check del dominio actual de un provider.
 
 ---
 
+### `GET /api/admin/providers` — Listar Providers (Admin)
+
+**Archivo:** `app/api/admin.py`
+
+Lista todos los providers con su configuración actual desde la base de datos, enriquecida con capabilities del registry.
+
+**Autenticación:** Ninguna (panel de administración local).
+
+**Respuesta:**
+```json
+{
+  "providers": [
+    {
+      "provider_id": "ebookelo",
+      "display_name": "Ebookelo",
+      "enabled": true,
+      "domain": "https://ww2.ebookelo.com",
+      "capabilities": {
+        "supports_book_search": true,
+        "supports_movie_search": false,
+        "supports_tv_search": false,
+        "categories": [7000, 7020, 8000, 8010]
+      }
+    }
+  ]
+}
+```
+
+---
+
+### `PUT /api/admin/providers/{provider_id}` — Actualizar Provider (Admin)
+
+**Body:**
+```json
+{"enabled": false, "domain": "https://nuevo-dominio.com"}
+```
+
+Ambos campos son opcionales. Si `enabled` cambia, se recarga el registry automáticamente.
+
+**Respuesta:** `{"status": "ok", "provider_id": "ebookelo"}`
+
+---
+
+### `POST /api/admin/providers/reload` — Recargar Registry (Admin)
+
+Fuerza la recarga del registry desde la DB. Útil tras cambios de dominio o enable/disable.
+
+**Respuesta:** `{"status": "reloaded", "provider_count": 16}`
+
+---
+
+### `GET /api/admin/settings` — Listar Settings (Admin)
+
+**Respuesta:**
+```json
+{
+  "settings": {
+    "api_key": "my-secret-key",
+    "external_url": "http://localhost:9811",
+    "tmdb_api_key": "",
+    "google_books_api_key": "",
+    "http_proxy": ""
+  }
+}
+```
+
+---
+
+### `PUT /api/admin/settings/{key}` — Actualizar Setting (Admin)
+
+**Body:** `{"value": "nuevo-valor"}`
+
+**Respuesta:** `{"status": "ok", "key": "api_key", "value": "nuevo-valor"}`
+
+---
+
+### `GET /api/admin/readarr` — Listar Instancias Readarr (Admin)
+
+**Respuesta:**
+```json
+{
+  "instances": [
+    {"id": 1, "name": "Main Readarr", "url": "http://readarr:8787", "api_key": "...", "enabled": 1}
+  ]
+}
+```
+
+---
+
+### `POST /api/admin/readarr` — Añadir Instancia Readarr (Admin)
+
+**Body:** `{"name": "Main Readarr", "url": "http://readarr:8787", "api_key": "xxx"}`
+
+**Respuesta (201):** `{"status": "created", "id": 1}`
+
+---
+
+### `PUT /api/admin/readarr/{id}` — Actualizar Instancia Readarr (Admin)
+
+**Body:** `{"name": "New Name", "url": "http://nueva-url:8787", "api_key": "xxx", "enabled": true}`
+
+Todos los campos son opcionales.
+
+---
+
+### `DELETE /api/admin/readarr/{id}` — Eliminar Instancia Readarr (Admin)
+
+**Respuesta:** `{"status": "deleted", "id": 1}`
+
+---
+
+### `POST /api/admin/readarr/{id}/sync` — Sincronizar con Readarr (Admin)
+
+Sincroniza los providers de libros activos como indexers Torznab en la instancia Readarr configurada. Crea indexers nuevos, actualiza existentes, y opcionalmente elimina huérfanos.
+
+**Respuesta:**
+```json
+{
+  "success": true,
+  "created": 3,
+  "updated": 12,
+  "failed": 1,
+  "deleted": 0,
+  "details": [...]
+}
+```
+
+---
+
+### `POST /api/admin/readarr/{id}/test` — Test de Conexión Readarr (Admin)
+
+Prueba conectividad con la instancia Readarr.
+
+**Respuesta:**
+```json
+{"success": true, "message": "Connected", "version": "0.4.12.4567"}
+```
+
+---
+
 ## Códigos de Error Torznab
 
 **Archivo:** `app/torznab/errors.py`
@@ -257,6 +397,7 @@ Categories: 5000,5030,5040,5045
 | `app/api/torznab.py` | Endpoints Torznab y download |
 | `app/api/health.py` | Health check |
 | `app/api/domains.py` | Endpoints de dominios |
+| `app/api/admin.py` | Endpoints de administración (providers, settings, Readarr) |
 | `app/torznab/errors.py` | Códigos de error XML |
 | `app/torznab/mapper.py` | Generación de XML de respuesta |
 | `app/torznab/caps.py` | Generación de XML de capabilities |
