@@ -9,6 +9,8 @@ Estructura:
 - Los .torrent son archivos reales, NO magnet links
 """
 
+import asyncio
+import json
 import re
 from typing import Optional
 from urllib.parse import quote_plus
@@ -105,14 +107,22 @@ class MejorTorrentProvider(BaseProvider):
             return []
 
         # Enriquecer: visitar cada página de detalle
-        enriched = []
-        for result in results[:limit]:
-            try:
-                detail = await self._fetch_detail_page(result)
-                enriched.extend(detail)
-            except Exception as e:
-                self.logger.warning(f"Error en detalle {result.guid}: {e}")
-                enriched.append(result)
+        semaphore = asyncio.Semaphore(3)
+
+        async def enrich_one(result: SearchResult) -> list[SearchResult]:
+            async with semaphore:
+                try:
+                    return await self._fetch_detail_page(result)
+                except Exception as e:
+                    self.logger.warning(f"Error en detalle {result.guid}: {e}")
+                    return [result]
+
+        detail_lists = await asyncio.gather(
+            *[enrich_one(result) for result in results[:limit]]
+        )
+        enriched: list[SearchResult] = []
+        for detail in detail_lists:
+            enriched.extend(detail)
 
         # Filtrar por temporada/episodio si se especificó
         if season is not None:
@@ -315,7 +325,7 @@ class MejorTorrentProvider(BaseProvider):
                 "api_key": settings.TMDB_API_KEY,
             }
             resp = await self.http_client.get(tmdb_url, params=params)
-            data = resp.json()
+            data = json.loads(resp.text)
 
             if data.get("movie_results"):
                 return data["movie_results"][0].get("title", "")
@@ -326,6 +336,6 @@ class MejorTorrentProvider(BaseProvider):
 
         return imdb_id
 
-    async def get_download_url(self, internal_id: str) -> str:
+    async def get_download_url(self, internal_id: str, **kwargs) -> str:
         """El download_url ya es la URL directa al .torrent."""
         return internal_id

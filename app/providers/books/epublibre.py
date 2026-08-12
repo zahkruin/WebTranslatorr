@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 
 from app.providers.base import BaseProvider
 from app.core.models import SearchResult
+from app.services.download_tokens import build_download_url
 from config import settings
 
 
@@ -76,7 +77,7 @@ class EpubLibreProvider(BaseProvider):
                     title=title_text,
                     guid=f"epublibre-{internal_id}",
                     link=href if href.startswith('http') else f"{self.base_url}{href}",
-                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+                    download_url=build_download_url(self.provider_id, internal_id, "epub"),
                     size_bytes=1000000,
                     pub_date=datetime.now(),
                     categories=[7000, 7020, 8000, 8010],
@@ -127,7 +128,6 @@ class EpubLibreProvider(BaseProvider):
         import re
         from bs4 import BeautifulSoup
         from datetime import datetime
-        from config import settings
 
         self.logger.info(f"EpubLibre browse: homepage scrape (offset={offset}, limit={limit})")
         results = []
@@ -152,7 +152,7 @@ class EpubLibreProvider(BaseProvider):
                     title=title_text,
                     guid=f"epublibre-{internal_id}",
                     link=href if href.startswith('http') else f"{self.base_url}{href}",
-                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+                    download_url=build_download_url(self.provider_id, internal_id, "epub"),
                     size_bytes=1000000,
                     pub_date=datetime.now(),
                     categories=[7000, 7020, 8000, 8010],

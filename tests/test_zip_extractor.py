@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.core.exceptions import ZipBombError
 from app.utils.zip_extractor import ZipExtractor
 
 
@@ -63,3 +64,16 @@ class TestZipExtractor:
             mock_zf.side_effect = Exception("Unexpected error")
             result = ZipExtractor.extract_epub_from_memory(b"some bytes")
             assert result is None
+
+    def test_rejects_zip_bomb_ratio(self):
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("book.epub", b"x" * 1024)
+        zip_bytes = zip_buffer.getvalue()
+
+        with patch("app.utils.zip_extractor.settings") as mock_settings:
+            mock_settings.ZIP_MAX_ENTRIES = 100
+            mock_settings.ZIP_MAX_UNCOMPRESSED_BYTES = 524288000
+            mock_settings.ZIP_MAX_RATIO = 1
+            with pytest.raises(ZipBombError):
+                ZipExtractor.extract_epub_from_memory(zip_bytes)

@@ -137,6 +137,7 @@ class DomainResolver:
                 )
 
             old_domain = self.get_current(provider_id)
+            config.current_domain = old_domain
 
             # Intentar cada estrategia en orden
             for strategy in self._strategies:
@@ -207,22 +208,23 @@ class DomainResolver:
 
     async def health_check(self, provider_id: str) -> bool:
         """Comprueba si el dominio actual del provider sigue vivo."""
-        domain = self.get_current(provider_id)
-        is_healthy = await self._validate_domain(domain)
+        async with self._lock:
+            domain = self.get_current(provider_id)
+            is_healthy = await self._validate_domain(domain)
 
-        if provider_id in self._resolved:
-            self._resolved[provider_id].healthy = is_healthy
-            self._resolved[provider_id].last_health_check = (
-                datetime.now(timezone.utc).isoformat()
-            )
-            self._persist()
+            if provider_id in self._resolved:
+                self._resolved[provider_id].healthy = is_healthy
+                self._resolved[provider_id].last_health_check = (
+                    datetime.now(timezone.utc).isoformat()
+                )
+                self._persist()
 
-        if not is_healthy:
-            logger.warning(
-                f"Health check FAILED for {provider_id} at {domain}"
-            )
+            if not is_healthy:
+                logger.warning(
+                    f"Health check FAILED for {provider_id} at {domain}"
+                )
 
-        return is_healthy
+            return is_healthy
 
     async def _validate_domain(self, url: str) -> bool:
         """Valida que un dominio responda correctamente con HTTP HEAD."""
@@ -267,13 +269,25 @@ class DomainResolver:
             return
 
         try:
+            from app.utils.url_safety import is_safe_url
+
             data = json.loads(
                 self._persistence_path.read_text(encoding="utf-8")
             )
+            loaded = 0
             for pid, rd_data in data.items():
+                url = rd_data.get("url", "")
+                if not is_safe_url(url):
+                    logger.warning(
+                        "Discarding persisted domain for %s: unsafe URL %s",
+                        pid,
+                        url,
+                    )
+                    continue
                 self._resolved[pid] = ResolvedDomain.from_dict(rd_data)
+                loaded += 1
             logger.info(
-                f"Loaded {len(self._resolved)} persisted domains: "
+                f"Loaded {loaded} persisted domains: "
                 + ", ".join(
                     f"{pid}={rd.url}" for pid, rd in self._resolved.items()
                 )

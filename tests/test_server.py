@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.version import get_version
 from app.server import create_app
 
 
@@ -48,9 +49,7 @@ class TestCreateApp:
         """create_app should return a FastAPI instance."""
         app = create_app()
         assert app.title == "WebTranslatorr"
-        # Version is read from VERSION file at runtime; in tests without
-        # the file present it falls back to "0.0.0"
-        assert app.version in ("0.1.2", "0.0.0")
+        assert app.version == get_version()
 
     def test_has_health_route(self):
         """The app should have the /health endpoint registered."""
@@ -103,7 +102,11 @@ class TestLifespan:
             patch("app.server.HttpClient", return_value=mock_http) as mock_http_cls,
             patch("app.server.DomainResolver", return_value=mock_resolver) as mock_resolver_cls,
             patch("app.server.torznab._init_providers"),
-            patch("app.server.domain_check_loop"),
+            # Avoid AsyncMock coroutine leakage:
+            # `lifespan` evaluates `domain_check_loop(...)` before passing it
+            # to a mocked `asyncio.create_task`. If `domain_check_loop` is
+            # patched as AsyncMock, the returned coroutine is never awaited.
+            patch("app.server.domain_check_loop", new=MagicMock()),
             patch("app.server.asyncio.create_task", return_value=mock_task) as mock_create_task,
         ):
             app = create_app()
@@ -132,7 +135,8 @@ class TestLifespan:
             patch("app.server.HttpClient") as mock_http_cls,
             patch("app.server.DomainResolver") as mock_resolver_cls,
             patch("app.server.torznab._init_providers"),
-            patch("app.server.domain_check_loop"),
+            # See rationale in `test_lifespan_startup_creates_http_client_and_resolver`.
+            patch("app.server.domain_check_loop", new=MagicMock()),
             patch("app.server.asyncio.create_task") as mock_create_task,
             patch("app.server.settings") as mock_settings,
         ):

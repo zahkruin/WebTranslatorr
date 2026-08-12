@@ -80,7 +80,7 @@ class SmartRouter:
             inferred_type = self._infer_content_type(query)
             if inferred_type == "books":
                 return self._get_book_providers()
-            elif inferred_type in ("movies", "tv"):
+            elif inferred_type in ("movies", "tv", "video"):
                 return self._get_video_providers()
 
         # Sin filtros → devolver providers más estables primero

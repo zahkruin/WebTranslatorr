@@ -22,6 +22,7 @@ from app.providers.base import BaseProvider
 from app.core.models import SearchResult, ProviderCapabilities
 from app.core.categories import CategoryMapper
 from app.scraping.http_client import HttpClient
+from app.services.download_tokens import build_download_url
 from config import settings
 
 
@@ -111,9 +112,7 @@ class EbookeloProvider(BaseProvider):
                     if detail.get("formats"):
                         fmt = self._select_best_format(detail["formats"])
                         book_id = result.guid.split('-')[1]
-                        result.download_url = (
-                            f"/api/download?provider=ebookelo&id={book_id}&fmt={fmt}"
-                        )
+                        result.download_url = build_download_url("ebookelo", book_id, fmt)
                         result.extra_attrs["format"] = fmt
                     if detail.get("genre"):
                         result.extra_attrs["genre"] = detail["genre"]
@@ -167,7 +166,7 @@ class EbookeloProvider(BaseProvider):
                 title=title,
                 guid=f"ebookelo-{book_id}",
                 link=f"{self.base_url}/ebook/{book_id}/{slug}",
-                download_url=f"/api/download?provider=ebookelo&id={book_id}&fmt=epub",
+                download_url=build_download_url("ebookelo", book_id, "epub"),
                 size_bytes=0,
                 pub_date=datetime.now(),
                 categories=[7000, 7020, 8000, 8010],
@@ -232,17 +231,13 @@ class EbookeloProvider(BaseProvider):
                 return fmt
         return formats[0] if formats else "epub"
 
-    async def get_download_url(self, internal_id: str) -> str:
-        """
-        Resuelve la URL final de descarga.
-        internal_id format: "{book_id}/{format}" ej: "1828/epub"
-        """
+    async def get_download_url(self, internal_id: str, **kwargs) -> str:
         parts = internal_id.split("/", 1)
         if len(parts) == 2:
             book_id, fmt = parts
         else:
             book_id = parts[0]
-            fmt = "epub"
+            fmt = kwargs.get("fmt") or "epub"
 
         download_url = f"{self.base_url}/download/{book_id}/{fmt}"
 

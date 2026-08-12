@@ -25,10 +25,26 @@ class DomainConfig:
     privtree_path: Optional[str] = None         # ej: "@mejortorrent"
     telegram_channel: Optional[str] = None       # ej: "MejorTorrentAp"
     known_domain_pattern: str = ""               # regex: r"mejortorrent\.\w+"
+    current_domain: Optional[str] = None
 
 
 class DomainStrategy(ABC):
     """Interfaz base para estrategias de resolución de dominio."""
+
+    @staticmethod
+    def _extract_hostname(url: str) -> str:
+        from urllib.parse import urlparse
+        return (urlparse(url).hostname or "").lower()
+
+    @staticmethod
+    def _hostname_matches(hostname: str, pattern: str) -> bool:
+        if not hostname or not pattern:
+            return False
+        if pattern.startswith("^"):
+            anchored = pattern
+        else:
+            anchored = rf"^[\w.-]*(?:{pattern})$"
+        return bool(re.match(anchored, hostname, re.IGNORECASE))
 
     @property
     @abstractmethod
@@ -74,11 +90,10 @@ class PrivtreeStrategy(DomainStrategy):
             soup = BeautifulSoup(response.text, "lxml")
 
             # Buscar enlaces que matcheen el patrón del dominio del provider
-            pattern = re.compile(config.known_domain_pattern, re.IGNORECASE)
-
             for link in soup.find_all("a", href=True):
                 href = link["href"]
-                if pattern.search(href):
+                hostname = self._extract_hostname(href)
+                if self._hostname_matches(hostname, config.known_domain_pattern):
                     domain = self._normalize_url(href)
                     logger.info(f"[privtree] Resolved {config.provider_id} → {domain}")
                     return domain
@@ -125,30 +140,25 @@ class TelegramPublicStrategy(DomainStrategy):
             response = await http_client.get(url)
             soup = BeautifulSoup(response.text, "lxml")
 
-            pattern = re.compile(config.known_domain_pattern, re.IGNORECASE)
-
-            # Los mensajes de Telegram en la vista pública están en elementos
-            # con clase "tgme_widget_message_wrap". Los más recientes están al final.
             messages = soup.find_all("div", class_="tgme_widget_message_wrap")
 
-            # Iterar desde el último mensaje hacia atrás
             for message in reversed(messages):
-                # Buscar enlaces dentro del mensaje
                 for link in message.find_all("a", href=True):
                     href = link["href"]
-                    if pattern.search(href):
+                    hostname = self._extract_hostname(href)
+                    if self._hostname_matches(hostname, config.known_domain_pattern):
                         domain = self._normalize_url(href)
                         logger.info(
                             f"[telegram] Resolved {config.provider_id} → {domain}"
                         )
                         return domain
 
-            # Fallback: buscar en todo el HTML si la estructura de Telegram cambió
             all_links = soup.find_all("a", href=True)
             matching = []
             for link in all_links:
                 href = link["href"]
-                if pattern.search(href):
+                hostname = self._extract_hostname(href)
+                if self._hostname_matches(hostname, config.known_domain_pattern):
                     matching.append(href)
 
             if matching:
@@ -190,7 +200,7 @@ class HealthCheckStrategy(DomainStrategy):
         return "healthcheck"
 
     async def resolve(self, config: DomainConfig, http_client) -> Optional[str]:
-        domain = config.default_domain
+        domain = config.current_domain or config.default_domain
         logger.debug(f"[healthcheck] Checking {domain}")
 
         try:

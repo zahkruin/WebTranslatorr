@@ -14,6 +14,7 @@ from app.api import torznab, health, domains, providers
 from app.scraping.http_client import HttpClient
 from app.services.domain_resolver import DomainResolver, domain_check_loop
 from app.services.domain_strategies import DomainConfig
+from app.providers.registry import registry
 from app.core.version import get_version
 
 
@@ -27,6 +28,10 @@ async def lifespan(app: FastAPI):
     logger.info("  WebTranslatorr v%s", version)
     logger.info("  Universal Torznab Proxy for *Arr applications")
     logger.info("=" * 60)
+
+    if settings.ENV == "production":
+        if not settings.API_KEY or settings.API_KEY == "changeme":
+            raise RuntimeError("WTR_API_KEY must be set in production")
 
     # --- Startup ---
     # Create shared HTTP client
@@ -196,21 +201,32 @@ async def lifespan(app: FastAPI):
         ))
 
     app.state.domain_resolver = resolver
-    
-    # Initialize providers using the resolver
-    torznab._init_providers(resolver)
 
-    # Initialize TranslationPipeline singleton (if enabled)
-    from app.services.translation_pipeline import get_translation_pipeline
-    pipeline = await get_translation_pipeline()
-    if pipeline is not None:
-        logger.info("TranslationPipeline enabled and initialised for search integration")
+    async def _on_domain_change(provider_id: str, new_domain: str):
+        try:
+            provider = registry.get(provider_id)
+            provider.base_url = new_domain.rstrip("/")
+            logger.info("Updated base_url for %s → %s", provider_id, new_domain)
+        except Exception as e:
+            logger.warning("Could not update base_url for %s: %s", provider_id, e)
+
+    resolver.on_domain_change(_on_domain_change)
+
+    # Initialize providers using the resolver
+    torznab._init_providers(resolver, http_client)
+    app.state.registry = registry
 
     # Initial domain resolution at startup
     logger.info("Running initial domain resolution...")
     resolved = await resolver.resolve_all()
     for pid, domain in resolved.items():
         logger.info(f"  {pid} → {domain}")
+        await _on_domain_change(pid, domain)
+
+    from app.services.translation_pipeline import get_translation_pipeline
+    pipeline = await get_translation_pipeline()
+    if pipeline is not None:
+        logger.info("TranslationPipeline enabled and initialised for search integration")
 
     # Start background domain check loop
     check_task = asyncio.create_task(
@@ -244,13 +260,19 @@ def create_app() -> FastAPI:
         description="Universal Torznab Proxy for *Arr applications",
         version=get_version(),
         lifespan=lifespan,
+        docs_url="/docs" if settings.ENABLE_DOCS else None,
+        redoc_url="/redoc" if settings.ENABLE_DOCS else None,
     )
 
-    # CORS middleware
+    cors_origins = (
+        [origin.strip() for origin in settings.CORS_ORIGINS.split(",") if origin.strip()]
+        if settings.CORS_ORIGINS
+        else ["*"]
+    )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=cors_origins,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )

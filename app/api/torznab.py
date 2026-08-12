@@ -22,10 +22,12 @@ Parámetros que los *Arr envían:
 """
 import asyncio
 import logging
+import re
 
 from fastapi import APIRouter, Query, Request, Response
 
 from config import settings
+from app.api.auth import validate_apikey
 from app.providers.registry import registry
 from app.providers.books.ebookelo import EbookeloProvider
 from app.providers.books.epublibre import EpubLibreProvider
@@ -58,29 +60,20 @@ from app.torznab.caps import CapsGenerator
 from app.torznab.errors import TorznabErrors
 from app.scraping.http_client import HttpClient
 from app.core.categories import CategoryMapper
+from app.core.exceptions import DownloadTooLargeError
 from app.services.cache import search_cache
+from app.services.download_tokens import (
+    build_download_content_url,
+    verify_download,
+)
 
 router = APIRouter()
 
-# Inicializar providers en startup
-_http_client = None
 
-
-def _get_http_client():
-    global _http_client
-    if _http_client is None:
-        _http_client = HttpClient(
-            rate_limit_per_second=settings.RATE_LIMIT_PER_SECOND,
-            max_retries=settings.MAX_RETRIES,
-            timeout=settings.REQUEST_TIMEOUT,
-            proxy=settings.HTTP_PROXY or None,
-        )
-    return _http_client
-
-
-def _init_providers(resolver=None):
+def _init_providers(resolver=None, http_client: HttpClient | None = None):
     """Inicializa los providers según configuración."""
-    http_client = _get_http_client()
+    if http_client is None:
+        raise ValueError("http_client is required for provider initialization")
 
     # Limpiar registro antes de inicializar para ser idempotente
     registry.clear()
@@ -155,11 +148,6 @@ def _init_providers(resolver=None):
         logging.warning("Gutenberg provider is configured as enabled but not yet implemented")
 
 
-def _validate_apikey(apikey: str) -> bool:
-    """Valida la API key."""
-    return apikey == settings.API_KEY
-
-
 def _parse_cats(cat_str: str) -> list[int]:
     """Parsea string de categorías a lista de enteros."""
     if not cat_str:
@@ -231,20 +219,47 @@ async def _handle_torznab_request(
 
     async def search_with_cache(provider, **kw):
         """Busca con cache intermedio y timeout."""
-        # Intentar cache primero
-        cached = search_cache.get(provider.provider_id, q, parsed_cats)
+        cache_query = kw.get("query", q)
+        cache_offset = kw.get("offset", offset)
+        cache_limit = kw.get("limit", limit)
+        cached = await search_cache.get(
+            provider.provider_id,
+            cache_query,
+            parsed_cats,
+            cache_offset,
+            cache_limit,
+        )
         if cached is not None:
-            logging.debug(f"Cache hit for {provider.provider_id} / '{q}'")
+            logging.debug(f"Cache hit for {provider.provider_id} / '{cache_query}'")
             return cached
 
         try:
-            results = await asyncio.wait_for(
-                provider.search(**kw),
-                timeout=SEARCH_TIMEOUT_SECONDS,
-            )
-            # Guardar en cache
+            # Important: wrap provider.search() in a Task before passing
+            # it to `asyncio.wait_for`. Tests monkeypatch `asyncio.wait_for`
+            # and raise without awaiting the awaitable argument; if we pass
+            # the raw coroutine, it can leak as "coroutine was never
+            # awaited". Using a Task ensures it is always scheduled and
+            # can be cancelled deterministically.
+            search_task = asyncio.create_task(provider.search(**kw))
+            try:
+                results = await asyncio.wait_for(
+                    search_task,
+                    timeout=SEARCH_TIMEOUT_SECONDS,
+                )
+            finally:
+                if not search_task.done():
+                    search_task.cancel()
+                    # Ensure cancellation completes (avoid "task was destroyed")
+                    await asyncio.gather(search_task, return_exceptions=True)
             if isinstance(results, list):
-                search_cache.set(provider.provider_id, q, results, parsed_cats)
+                await search_cache.set(
+                    provider.provider_id,
+                    cache_query,
+                    results,
+                    parsed_cats,
+                    cache_offset,
+                    cache_limit,
+                )
             return results
         except asyncio.TimeoutError:
             logging.warning(f"Provider {provider.provider_id} timed out after {SEARCH_TIMEOUT_SECONDS}s")
@@ -268,68 +283,62 @@ async def _handle_torznab_request(
     translation_title = (q or title or "").strip()
     translation_author = (author or "").strip() or None
 
-    if translation_title and parsed_cats:
-        from app.core.categories import CategoryMapper
-        is_book_search = any(7000 <= c <= 8999 for c in parsed_cats)
-        is_generic_search = len(parsed_cats) == 0 and not imdbid and not tvdbid
+    is_generic_search = len(parsed_cats) == 0 and not imdbid and not tvdbid
+    is_book_search = any(7000 <= c <= 8999 for c in parsed_cats)
 
-        if is_book_search or is_generic_search:
-            cached = _cached_translate(translation_title, translation_author)
-            if cached is not None:
-                if cached:
-                    effective_q = cached
-                    logging.debug(
-                        "Translation (cached): '%s' -> '%s'",
-                        translation_title, effective_q,
-                    )
-            else:
-                try:
-                    translation_pipeline = await get_translation_pipeline()
-                    if translation_pipeline is not None:
-                        result = await translation_pipeline.translate(translation_title, translation_author)
-                        if result is not None:
-                            translated = result.title_es
-                            # Validate: skip if same as English input,
-                            # if result is just the author name,
-                            # or if result contains the author name with
-                            # low confidence (likely a collected-works).
-                            tl_lower = translated.lower()
-                            tt_lower = translation_title.lower()
-                            author_lower = (translation_author or "").lower()
-                            if tl_lower == tt_lower:
-                                logging.debug(
-                                    "Translation '%s' unchanged, using original query",
-                                    translated,
-                                )
-                                _set_cached_translate(translation_title, translation_author, None)
-                            elif author_lower and tl_lower == author_lower:
-                                logging.debug(
-                                    "Translation '%s' is the author name, using original query",
-                                    translated,
-                                )
-                                _set_cached_translate(translation_title, translation_author, None)
-                            elif (
-                                result.confidence < 0.8
-                                and author_lower
-                                and author_lower in tl_lower
-                            ):
-                                logging.debug(
-                                    "Translation '%s' looks like a collection (contains author name), using original query",
-                                    translated,
-                                )
-                                _set_cached_translate(translation_title, translation_author, None)
-                            else:
-                                effective_q = translated
-                                logging.info(
-                                    f"Translation: '%s' -> '%s' (source=%s, confidence=%s)",
-                                    translation_title, effective_q, result.source, result.confidence
-                                )
-                                _set_cached_translate(translation_title, translation_author, effective_q)
-                        else:
+    if translation_title and (is_book_search or is_generic_search):
+        cached = _cached_translate(translation_title, translation_author)
+        if cached is not None:
+            if cached:
+                effective_q = cached
+                logging.debug(
+                    "Translation (cached): '%s' -> '%s'",
+                    translation_title, effective_q,
+                )
+        else:
+            try:
+                translation_pipeline = await get_translation_pipeline()
+                if translation_pipeline is not None:
+                    result = await translation_pipeline.translate(translation_title, translation_author)
+                    if result is not None:
+                        translated = result.title_es
+                        tl_lower = translated.lower()
+                        tt_lower = translation_title.lower()
+                        author_lower = (translation_author or "").lower()
+                        if tl_lower == tt_lower:
+                            logging.debug(
+                                "Translation '%s' unchanged, using original query",
+                                translated,
+                            )
                             _set_cached_translate(translation_title, translation_author, None)
-                except Exception as e:
-                    _set_cached_translate(translation_title, translation_author, None)
-                    logging.warning(f"Translation pipeline error (using original query): {e}")
+                        elif author_lower and tl_lower == author_lower:
+                            logging.debug(
+                                "Translation '%s' is the author name, using original query",
+                                translated,
+                            )
+                            _set_cached_translate(translation_title, translation_author, None)
+                        elif (
+                            result.confidence < 0.8
+                            and author_lower
+                            and author_lower in tl_lower
+                        ):
+                            logging.debug(
+                                "Translation '%s' looks like a collection (contains author name), using original query",
+                                translated,
+                            )
+                            _set_cached_translate(translation_title, translation_author, None)
+                        else:
+                            effective_q = translated
+                            logging.info(
+                                f"Translation: '%s' -> '%s' (source=%s, confidence=%s)",
+                                translation_title, effective_q, result.source, result.confidence
+                            )
+                            _set_cached_translate(translation_title, translation_author, effective_q)
+                    else:
+                        _set_cached_translate(translation_title, translation_author, None)
+            except Exception as e:
+                _set_cached_translate(translation_title, translation_author, None)
+                logging.warning(f"Translation pipeline error (using original query): {e}")
 
     has_query = bool(q and q.strip()) or bool(author and author.strip()) or bool(title and title.strip())
 
@@ -356,14 +365,22 @@ async def _handle_torznab_request(
 
         async def browse_provider(provider):
             try:
-                return await asyncio.wait_for(
+                browse_task = asyncio.create_task(
                     provider.browse(
                         categories=parsed_cats,
                         offset=offset,
                         limit=limit,
-                    ),
-                    timeout=SEARCH_TIMEOUT_SECONDS,
+                    )
                 )
+                try:
+                    return await asyncio.wait_for(
+                        browse_task,
+                        timeout=SEARCH_TIMEOUT_SECONDS,
+                    )
+                finally:
+                    if not browse_task.done():
+                        browse_task.cancel()
+                        await asyncio.gather(browse_task, return_exceptions=True)
             except asyncio.TimeoutError:
                 logging.warning(f"Provider {provider.provider_id} browse timed out")
                 return []
@@ -465,7 +482,7 @@ async def torznab_api(
     También responde a t=caps con las capabilities agregadas de todos los providers.
     """
     # Validar API key
-    if not _validate_apikey(apikey):
+    if not validate_apikey(apikey):
         # t=caps sin API key: devolver caps básicas para permitir
         # que las *Arr apps detecten el servicio (como hace Jackett)
         if t and t.lower() == "caps":
@@ -517,9 +534,11 @@ async def torznab_api(
 
 @router.get("/api/download")
 async def download_proxy(
+    request: Request,
     provider: str = Query(..., description="ID del provider"),
     id: str = Query(..., description="ID interno del contenido"),
     fmt: str = Query("epub", description="Formato del archivo"),
+    apikey: str = Query("", description="API Key"),
 ):
     """
     Proxy de descarga. Los *Arr llaman a este endpoint cuando
@@ -530,27 +549,46 @@ async def download_proxy(
     Readarr espera siempre un archivo .torrent válido de los
     indexers Torznab y falla si recibe otro tipo de archivo.
     """
+    if not validate_apikey(apikey):
+        return Response(
+            content=TorznabErrors.incorrect_api_key(),
+            media_type="application/xml",
+            headers=TorznabErrors.error_headers(
+                TorznabErrors.INCORRECT_API_KEY, "Incorrect API Key"
+            ),
+        )
+
+    safe_id = re.sub(r'[^\w.\-]', '_', id)
+    safe_fmt = re.sub(r'[^\w.\-]', '_', fmt)
+
     try:
         prov = registry.get(provider)
 
         caps = prov.get_capabilities()
         is_video = caps.supports_movie_search or caps.supports_tv_search
 
-        internal_id = id if provider != "ebookelo" else f"{id}/{fmt}"
-
-        final_url = await prov.get_download_url(internal_id, fmt=fmt)
+        final_url = await prov.get_download_url(id, fmt=fmt)
 
         if not final_url:
             raise Exception("No URL found")
 
-        http_client = _get_http_client()
-        file_bytes = await http_client.download_file(final_url, use_scraper=getattr(prov, 'is_zipped', False) or provider == "annasarchive")
+        http_client: HttpClient = request.app.state.http_client
+        max_bytes = (
+            settings.MAX_VIDEO_DOWNLOAD_BYTES
+            if is_video
+            else settings.MAX_DOWNLOAD_BYTES
+        )
+        file_bytes = await http_client.download_file(
+            final_url,
+            max_bytes=max_bytes,
+            use_scraper=getattr(prov, 'is_zipped', False) or provider == "annasarchive",
+        )
 
         if getattr(prov, 'is_zipped', False):
             extracted = ZipExtractor.extract_epub_from_memory(file_bytes)
             if extracted:
                 file_bytes = extracted
-                fmt = "epub"
+                safe_fmt = "epub"
 
         if is_video:
             return Response(
@@ -561,13 +599,10 @@ async def download_proxy(
                 }
             )
 
-        ext = fmt if fmt in ("epub", "mobi", "pdf") else "epub"
-        file_name = f"{prov.display_name}_{id}.{ext}"
+        ext = safe_fmt if safe_fmt in ("epub", "mobi", "pdf") else "epub"
+        file_name = f"{prov.display_name}_{safe_id}.{ext}"
 
-        web_seed_url = (
-            f"{settings.EXTERNAL_URL.rstrip('/')}/api/download-content"
-            f"?provider={provider}&id={id}&fmt={fmt}"
-        )
+        web_seed_url = build_download_content_url(provider, id, fmt)
 
         torrent_bytes, info_hash, magnet_uri = generate_torrent(
             file_name=file_name,
@@ -583,43 +618,63 @@ async def download_proxy(
                 "Content-Disposition": f'attachment; filename="{file_name}.torrent"'
             }
         )
+    except DownloadTooLargeError as e:
+        logging.error(f"Download too large: {e}")
+        return Response(
+            content=TorznabErrors.server_error("Download failed"),
+            media_type="application/xml"
+        )
     except Exception as e:
         logging.error(f"Error en descarga: {e}")
         return Response(
-            content=TorznabErrors.server_error(str(e)),
+            content=TorznabErrors.server_error("Download failed"),
             media_type="application/xml"
         )
 
 
 @router.get("/api/download-content")
 async def download_content(
+    request: Request,
     provider: str = Query(..., description="ID del provider"),
     id: str = Query(..., description="ID interno del contenido"),
     fmt: str = Query("epub", description="Formato del archivo"),
+    token: str = Query("", description="Signed download token"),
 ):
     """
     Endpoint interno para el web seed del torrent.
     Devuelve el contenido real (EPUB/PDF/MOBI) para que
     el cliente torrent lo descargue via web seed.
     """
+    if not verify_download(token, provider, id, fmt):
+        return Response(
+            content=TorznabErrors.incorrect_api_key(),
+            media_type="application/xml",
+            headers=TorznabErrors.error_headers(
+                TorznabErrors.INCORRECT_API_KEY, "Invalid or expired download token"
+            ),
+        )
+
+    safe_fmt = re.sub(r'[^\w.\-]', '_', fmt)
+
     try:
         prov = registry.get(provider)
 
-        internal_id = id if provider != "ebookelo" else f"{id}/{fmt}"
-
-        final_url = await prov.get_download_url(internal_id, fmt=fmt)
+        final_url = await prov.get_download_url(id, fmt=fmt)
 
         if not final_url:
             raise Exception("No URL found")
 
-        http_client = _get_http_client()
-        file_bytes = await http_client.download_file(final_url, use_scraper=getattr(prov, 'is_zipped', False) or provider == "annasarchive")
+        http_client: HttpClient = request.app.state.http_client
+        file_bytes = await http_client.download_file(
+            final_url,
+            use_scraper=getattr(prov, 'is_zipped', False) or provider == "annasarchive",
+        )
 
         if getattr(prov, 'is_zipped', False):
             extracted = ZipExtractor.extract_epub_from_memory(file_bytes)
             if extracted:
                 file_bytes = extracted
-                fmt = "epub"
+                safe_fmt = "epub"
 
         content_types = {
             "epub": "application/epub+zip",
@@ -627,7 +682,7 @@ async def download_content(
             "pdf": "application/pdf",
         }
 
-        ext = fmt if fmt in ("epub", "mobi", "pdf") else "epub"
+        ext = safe_fmt if safe_fmt in ("epub", "mobi", "pdf") else "epub"
 
         return Response(
             content=file_bytes,
@@ -636,10 +691,16 @@ async def download_content(
                 "Content-Disposition": f'attachment; filename="download.{ext}"'
             }
         )
+    except DownloadTooLargeError as e:
+        logging.error(f"Download too large: {e}")
+        return Response(
+            content=TorznabErrors.server_error("Download failed"),
+            media_type="application/xml"
+        )
     except Exception as e:
         logging.error(f"Error en descarga de contenido: {e}")
         return Response(
-            content=TorznabErrors.server_error(str(e)),
+            content=TorznabErrors.server_error("Download failed"),
             media_type="application/xml"
         )
 
@@ -673,7 +734,7 @@ async def provider_torznab_api(
     provider_id_lower = provider_id.lower()
 
     # Validar API key
-    if not _validate_apikey(apikey):
+    if not validate_apikey(apikey):
         # t=caps sin API key: permitir detección del servicio
         if t and t.lower() == "caps":
             try:

@@ -2,38 +2,23 @@
 API endpoints para consultar y gestionar la resolución dinámica de dominios.
 """
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
+
+from app.api.auth import require_apikey
 
 router = APIRouter(prefix="/api/domains", tags=["domains"])
 
 
 @router.get("")
-async def get_domains(request: Request):
-    """
-    Devuelve el estado actual de todos los dominios resueltos.
-
-    Response:
-    {
-      "mejortorrent": {
-        "url": "https://www42.mejortorrent.eu",
-        "resolved_at": "2026-04-17T19:30:00Z",
-        "source": "privtree",
-        "healthy": true,
-        "last_health_check": "2026-04-17T19:30:00Z"
-      },
-      ...
-    }
-    """
+async def get_domains(request: Request, apikey: str = Query("")):
+    require_apikey(apikey)
     resolver = request.app.state.domain_resolver
     return resolver.get_status()
 
 
 @router.post("/refresh")
-async def refresh_domains(request: Request):
-    """
-    Fuerza la resolución de todos los dominios inmediatamente.
-    Útil para debugging o cuando se sabe que un dominio ha cambiado.
-    """
+async def refresh_domains(request: Request, apikey: str = Query("")):
+    require_apikey(apikey)
     resolver = request.app.state.domain_resolver
     results = await resolver.resolve_all()
     status = resolver.get_status()
@@ -44,8 +29,12 @@ async def refresh_domains(request: Request):
 
 
 @router.post("/refresh/{provider_id}")
-async def refresh_provider_domain(provider_id: str, request: Request):
-    """Fuerza la resolución del dominio de un provider específico."""
+async def refresh_provider_domain(
+    provider_id: str,
+    request: Request,
+    apikey: str = Query(""),
+):
+    require_apikey(apikey)
     resolver = request.app.state.domain_resolver
     try:
         new_domain = await resolver.resolve(provider_id)
@@ -64,8 +53,12 @@ async def refresh_provider_domain(provider_id: str, request: Request):
 
 
 @router.get("/health/{provider_id}")
-async def check_provider_health(provider_id: str, request: Request):
-    """Ejecuta un health check del dominio actual de un provider."""
+async def check_provider_health(
+    provider_id: str,
+    request: Request,
+    apikey: str = Query(""),
+):
+    require_apikey(apikey)
     resolver = request.app.state.domain_resolver
     try:
         is_healthy = await resolver.health_check(provider_id)

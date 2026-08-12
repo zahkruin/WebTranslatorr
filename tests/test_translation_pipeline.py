@@ -657,9 +657,21 @@ class TestTranslationPipelineIntegration:
     """Tests for the translation pipeline integration in the search flow."""
 
     @pytest.mark.asyncio
-    async def test_pipeline_disabled_by_default(self):
+    async def test_pipeline_disabled_by_default(self, monkeypatch):
         """When TRANSLATION_PIPELINE_SEARCH_ENABLED=False, get_translation_pipeline returns None."""
-        from app.services.translation_pipeline import get_translation_pipeline
+        from app.services.translation_pipeline import (
+            get_translation_pipeline,
+            shutdown_translation_pipeline,
+        )
+        import app.services.translation_pipeline as tp_module
+
+        # Ensure deterministic state regardless of prior tests or .env overrides.
+        await shutdown_translation_pipeline()
+        tp_module._translation_pipeline = None
+        monkeypatch.setattr(
+            "app.services.translation_pipeline.settings.TRANSLATION_PIPELINE_SEARCH_ENABLED",
+            False,
+        )
 
         # The default is False, so this should return None
         pipeline = await get_translation_pipeline()

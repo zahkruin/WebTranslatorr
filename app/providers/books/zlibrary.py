@@ -21,6 +21,7 @@ from bs4 import BeautifulSoup
 
 from app.providers.base import BaseProvider
 from app.core.models import SearchResult
+from app.services.download_tokens import build_download_url
 from config import settings
 
 
@@ -144,7 +145,7 @@ class ZLibraryProvider(BaseProvider):
                     title=f"{title_text} - {author_text}" if author_text else title_text,
                     guid=f"zlibrary-{book_id}",
                     link=href if href.startswith('http') else f"{self.base_url}{href}",
-                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={book_id}&fmt={extension}",
+                    download_url=build_download_url(self.provider_id, book_id, extension),
                     size_bytes=1000000,
                     pub_date=datetime.now(),
                     categories=[7000, 7020, 8000, 8010],
@@ -178,7 +179,7 @@ class ZLibraryProvider(BaseProvider):
                         title=title_text,
                         guid=f"zlibrary-{book_id}",
                         link=href if href.startswith('http') else f"{self.base_url}{href}",
-                        download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={book_id}&fmt=epub",
+                        download_url=build_download_url(self.provider_id, book_id, "epub"),
                         size_bytes=1000000,
                         pub_date=datetime.now(),
                         categories=[7000, 7020, 8000, 8010],
@@ -310,7 +311,7 @@ class ZLibraryProvider(BaseProvider):
                     title=f"{title_text} - {author_text}" if author_text else title_text,
                     guid=f"zlibrary-{book_id}",
                     link=href if href.startswith('http') else f"{self.base_url}{href}",
-                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={book_id}&fmt={extension}",
+                    download_url=build_download_url(self.provider_id, book_id, extension),
                     size_bytes=1000000,
                     pub_date=datetime.now(),
                     categories=[7000, 7020, 8000, 8010],
@@ -339,7 +340,7 @@ class ZLibraryProvider(BaseProvider):
                         title=title_text,
                         guid=f"zlibrary-{book_id}",
                         link=href if href.startswith('http') else f"{self.base_url}{href}",
-                        download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={book_id}&fmt=epub",
+                        download_url=build_download_url(self.provider_id, book_id, "epub"),
                         size_bytes=1000000,
                         pub_date=datetime.now(),
                         categories=[7000, 7020, 8000, 8010],

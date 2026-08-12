@@ -63,7 +63,7 @@ class BaseProvider(ABC):
         ...
 
     @abstractmethod
-    async def get_download_url(self, internal_id: str) -> str:
+    async def get_download_url(self, internal_id: str, **kwargs) -> str | None:
         """
         Dado un ID interno (ej: '1828/epub'), resuelve la URL final
         de descarga directa del archivo.

@@ -7,7 +7,7 @@ available providers and their capabilities programmatically.
 
 from fastapi import APIRouter, Query, Response
 
-from app.api.torznab import _validate_apikey
+from app.api.auth import validate_apikey
 from app.providers.registry import registry
 
 router = APIRouter(prefix="/api/providers", tags=["providers"])
@@ -22,7 +22,7 @@ async def list_providers(apikey: str = Query("", description="API Key")):
 
     Used by Ebookerr/Prowlarr to auto-discover and sync indexers.
     """
-    if not _validate_apikey(apikey):
+    if not validate_apikey(apikey):
         from app.torznab.errors import TorznabErrors
         return Response(
             content=TorznabErrors.incorrect_api_key(),
@@ -48,7 +48,7 @@ async def list_providers(apikey: str = Query("", description="API Key")):
 @router.get("/{provider_id}")
 async def get_provider(provider_id: str, apikey: str = Query("", description="API Key")):
     """Get details for a single provider."""
-    if not _validate_apikey(apikey):
+    if not validate_apikey(apikey):
         from app.torznab.errors import TorznabErrors
         return Response(
             content=TorznabErrors.incorrect_api_key(),

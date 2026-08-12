@@ -83,6 +83,7 @@ class TestHttpClientGet:
         mock_response.content = b"<html>ok</html>"
         mock_response.headers = {"content-type": "text/html"}
         mock_response.url = "https://example.com/page"
+        mock_response.history = []
         mock_instance.get = AsyncMock(return_value=mock_response)
 
         result = await client.get("https://example.com/page")
@@ -103,6 +104,7 @@ class TestHttpClientGet:
         mock_response.content = b""
         mock_response.headers = {}
         mock_response.url = "https://example.com/search"
+        mock_response.history = []
         mock_instance.get = AsyncMock(return_value=mock_response)
 
         await client.get("https://example.com/search", params={"q": "test"})
@@ -122,7 +124,8 @@ class TestHttpClientGet:
         error_response.text = ""
         error_response.content = b""
         error_response.headers = {}
-        error_response.url = ""
+        error_response.url = "https://example.com/page"
+        error_response.history = []
 
         # Raise HTTPStatusError on first two attempts, succeed on third
         exc = httpx.HTTPStatusError("Too Many", request=MagicMock(), response=error_response)
@@ -179,7 +182,8 @@ class TestHttpClientGet:
         error_response.text = ""
         error_response.content = b""
         error_response.headers = {}
-        error_response.url = ""
+        error_response.url = "https://example.com/page"
+        error_response.history = []
 
         exc = httpx.HTTPStatusError("Too Many", request=MagicMock(), response=error_response)
         error_response.raise_for_status.side_effect = [exc, exc, None]
@@ -284,17 +288,48 @@ class TestHttpClientDownload:
         """download_file should return content bytes."""
         _, mock_instance = mock_httpx_class
         client = HttpClient(rate_limit_per_second=100.0, max_retries=1, timeout=10)
-        mock_response = MagicMock(spec=httpx.Response)
+
+        mock_response = AsyncMock()
         mock_response.status_code = 200
-        mock_response.text = ""
-        mock_response.content = b"binary data"
-        mock_response.headers = {}
         mock_response.url = "https://example.com/file.bin"
-        mock_instance.get = AsyncMock(return_value=mock_response)
+        mock_response.raise_for_status = MagicMock()
+
+        async def aiter_bytes(chunk_size):
+            yield b"binary data"
+
+        mock_response.aiter_bytes = aiter_bytes
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_instance.stream = MagicMock(return_value=mock_stream)
 
         result = await client.download_file("https://example.com/file.bin")
 
         assert result == b"binary data"
+
+    @pytest.mark.asyncio
+    async def test_download_file_too_large(self, mock_httpx_class, mock_cloudscraper):
+        from app.core.exceptions import DownloadTooLargeError
+
+        _, mock_instance = mock_httpx_class
+        client = HttpClient(rate_limit_per_second=100.0, max_retries=1, timeout=10)
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.url = "https://example.com/file.bin"
+        mock_response.raise_for_status = MagicMock()
+
+        async def aiter_bytes(chunk_size):
+            yield b"x" * 2048
+
+        mock_response.aiter_bytes = aiter_bytes
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_instance.stream = MagicMock(return_value=mock_stream)
+
+        with pytest.raises(DownloadTooLargeError):
+            await client.download_file("https://example.com/file.bin", max_bytes=1024)
 
 
 class TestHttpClientRotateUA:

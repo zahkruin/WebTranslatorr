@@ -4,6 +4,7 @@ Health check and diagnostics endpoints.
 import logging
 from fastapi import APIRouter, Query
 
+from app.api.auth import require_apikey
 from app.providers.registry import registry
 from app.core.version import get_version
 
@@ -67,7 +68,9 @@ async def health_check(brief: bool = Query(False, description="Brief mode: just 
 @router.get("/health/search")
 async def health_search(
     q: str = Query("quijote", description="Test query"),
+    apikey: str = Query(""),
 ):
+    require_apikey(apikey)
     """
     Health check profundo: ejecuta una búsqueda real en todos los providers
     y reporta cuántos resultados devuelve cada uno.

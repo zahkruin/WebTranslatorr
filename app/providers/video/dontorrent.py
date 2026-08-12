@@ -151,6 +151,6 @@ class DonTorrentProvider(BaseProvider):
         """No hay endpoint de búsqueda GET, usar listados."""
         return f"{self.base_url}/peliculas"
 
-    async def get_download_url(self, internal_id: str) -> str:
+    async def get_download_url(self, internal_id: str, **kwargs) -> str:
         """El download_url ya es la URL directa."""
         return internal_id

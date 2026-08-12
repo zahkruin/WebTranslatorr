@@ -11,6 +11,13 @@ from fastapi import FastAPI
 from app.api import domains
 
 
+@pytest.fixture(autouse=True)
+def mock_api_key():
+    with patch("app.api.auth.settings") as mock_settings:
+        mock_settings.API_KEY = "testkey"
+        yield
+
+
 @pytest.fixture
 def mock_resolver():
     """Returns a mock DomainResolver."""
@@ -43,12 +50,16 @@ class TestGetDomains:
     """Tests for GET /api/domains"""
 
     def test_returns_status(self, client, mock_resolver):
-        response = client.get("/api/domains")
+        response = client.get("/api/domains?apikey=testkey")
         assert response.status_code == 200
         data = response.json()
         assert "mejortorrent" in data
         assert data["mejortorrent"]["url"] == "https://example.com"
         mock_resolver.get_status.assert_called_once()
+
+    def test_returns_401_without_apikey(self, client):
+        response = client.get("/api/domains")
+        assert response.status_code == 401
 
 
 class TestRefreshDomains:
@@ -56,7 +67,7 @@ class TestRefreshDomains:
 
     @pytest.mark.asyncio
     async def test_refresh_all(self, client, mock_resolver):
-        response = client.post("/api/domains/refresh")
+        response = client.post("/api/domains/refresh?apikey=testkey")
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "Domain resolution complete"
@@ -68,7 +79,7 @@ class TestRefreshProviderDomain:
 
     @pytest.mark.asyncio
     async def test_refresh_provider_success(self, client, mock_resolver):
-        response = client.post("/api/domains/refresh/mejortorrent")
+        response = client.post("/api/domains/refresh/mejortorrent?apikey=testkey")
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "Domain resolved for mejortorrent"
@@ -77,7 +88,7 @@ class TestRefreshProviderDomain:
     @pytest.mark.asyncio
     async def test_refresh_provider_not_found(self, client, mock_resolver):
         mock_resolver.resolve = AsyncMock(side_effect=ValueError("Unknown provider: unknown"))
-        response = client.post("/api/domains/refresh/unknown")
+        response = client.post("/api/domains/refresh/unknown?apikey=testkey")
         assert response.status_code == 404
         data = response.json()
         assert "error" in data
@@ -88,7 +99,7 @@ class TestCheckProviderHealth:
 
     @pytest.mark.asyncio
     async def test_health_success(self, client, mock_resolver):
-        response = client.get("/api/domains/health/mejortorrent")
+        response = client.get("/api/domains/health/mejortorrent?apikey=testkey")
         assert response.status_code == 200
         data = response.json()
         assert data["provider_id"] == "mejortorrent"
@@ -97,7 +108,7 @@ class TestCheckProviderHealth:
     @pytest.mark.asyncio
     async def test_health_not_found(self, client, mock_resolver):
         mock_resolver.health_check = AsyncMock(side_effect=ValueError("Unknown provider"))
-        response = client.get("/api/domains/health/unknown")
+        response = client.get("/api/domains/health/unknown?apikey=testkey")
         assert response.status_code == 404
         data = response.json()
         assert "error" in data

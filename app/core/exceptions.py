@@ -31,3 +31,13 @@ class DownloadError(WebTranslatorrError):
 class ValidationError(WebTranslatorrError):
     """Raised when request validation fails."""
     pass
+
+
+class DownloadTooLargeError(DownloadError):
+    """Raised when a download exceeds the configured size limit."""
+    pass
+
+
+class ZipBombError(DownloadError):
+    """Raised when a ZIP archive exceeds safety limits."""
+    pass

@@ -479,6 +479,6 @@ class EliteTorrentProvider(BaseProvider):
         slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')
         return slug or title.replace(' ', '-').lower()
 
-    async def get_download_url(self, internal_id: str) -> str:
+    async def get_download_url(self, internal_id: str, **kwargs) -> str:
         """Download URL is set during search enrichment."""
         return internal_id

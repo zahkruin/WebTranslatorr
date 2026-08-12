@@ -18,6 +18,7 @@ from bs4 import BeautifulSoup
 
 from app.providers.base import BaseProvider
 from app.core.models import SearchResult
+from app.services.download_tokens import build_download_url
 from config import settings
 
 
@@ -117,7 +118,7 @@ class LibgenProvider(BaseProvider):
                     title=f"{title_text} - {author_text}",
                     guid=f"libgen-{md5}",
                     link=f"{self.base_url}/book/index.php?md5={md5}",
-                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={md5}&fmt={extension}",
+                    download_url=build_download_url(self.provider_id, md5, extension),
                     size_bytes=size_bytes,
                     pub_date=datetime.now(),
                     categories=[7000, 7020, 8000, 8010],
@@ -261,7 +262,7 @@ class LibgenProvider(BaseProvider):
                     title=f"{title_text} - {author_text}",
                     guid=f"libgen-{md5}",
                     link=f"{self.base_url}/book/index.php?md5={md5}",
-                    download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={md5}&fmt={extension}",
+                    download_url=build_download_url(self.provider_id, md5, extension),
                     size_bytes=size_bytes,
                     pub_date=datetime.now(),
                     categories=[7000, 7020, 8000, 8010],

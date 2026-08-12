@@ -25,6 +25,7 @@ from bs4 import BeautifulSoup
 from app.providers.base import BaseProvider
 from app.core.models import SearchResult
 from app.scraping.wp_api_client import WordPressApiClient
+from app.services.download_tokens import build_download_url
 from config import settings
 
 
@@ -175,7 +176,7 @@ class EpubgratisProvider(BaseProvider):
                         title=title_text,
                         guid=f"epubgratis-{internal_id}",
                         link=link_full,
-                        download_url=f"{settings.EXTERNAL_URL}/api/download?provider={self.provider_id}&id={internal_id}&fmt=epub",
+                        download_url=build_download_url(self.provider_id, internal_id, "epub"),
                         size_bytes=2000000,
                         pub_date=datetime.now(),
                         categories=[7000, 7020, 8000, 8010],

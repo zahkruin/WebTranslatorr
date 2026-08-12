@@ -33,12 +33,17 @@ class ProviderRegistry:
     def get_by_categories(self, categories: list[int]) -> list[BaseProvider]:
         """Devuelve providers que soporten al menos una de las categorías pedidas."""
         matched = []
+        seen: set[str] = set()
         for provider in self._providers.values():
             caps = provider.get_capabilities()
+            if provider.provider_id in seen:
+                continue
             if any(cat in caps.supported_categories for cat in categories):
                 matched.append(provider)
+                seen.add(provider.provider_id)
             elif any(self._parent_match(cat, caps.supported_categories) for cat in categories):
                 matched.append(provider)
+                seen.add(provider.provider_id)
         return matched
 
     def get_by_content_type(self, content_type: str) -> list[BaseProvider]:

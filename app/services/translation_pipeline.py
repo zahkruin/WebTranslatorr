@@ -184,25 +184,25 @@ class TranslationCache:
         if self._conn is None:
             await self.connect()
         assert self._conn is not None
-        h = self._compute_hash(title_en, author)
-        cursor = await self._conn.execute(
-            "SELECT title_es, source, confidence FROM translation_cache "
-            "WHERE title_en_hash = ?",
-            (h,),
-        )
-        row = await cursor.fetchone()
-        await cursor.close()
-        if row is None:
-            return None
-        # Bump hit counters on read
-        await self._conn.execute(
-            "UPDATE translation_cache "
-            "SET hit_count = hit_count + 1, last_hit_at = datetime('now') "
-            "WHERE title_en_hash = ?",
-            (h,),
-        )
-        await self._conn.commit()
-        return TranslationResult(title_es=row[0], source=row[1], confidence=row[2])
+        async with self._write_lock:
+            h = self._compute_hash(title_en, author)
+            cursor = await self._conn.execute(
+                "SELECT title_es, source, confidence FROM translation_cache "
+                "WHERE title_en_hash = ?",
+                (h,),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+            if row is None:
+                return None
+            await self._conn.execute(
+                "UPDATE translation_cache "
+                "SET hit_count = hit_count + 1, last_hit_at = datetime('now') "
+                "WHERE title_en_hash = ?",
+                (h,),
+            )
+            await self._conn.commit()
+            return TranslationResult(title_es=row[0], source=row[1], confidence=row[2])
 
     async def set(
         self,
@@ -327,8 +327,12 @@ class WikidataClient:
 
     @staticmethod
     def _escape_sparql(value: str) -> str:
-        """Escape double-quotes for safe SPARQL string injection."""
-        return value.replace('"', '\\"')
+        """Escape special characters for safe SPARQL string injection."""
+        return (
+            value.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+        )
 
     # ------------------------------------------------------------------
     # Public API

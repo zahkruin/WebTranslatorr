@@ -18,11 +18,22 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9811/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     environment:
       # Server
+      WTR_ENV: ${WTR_ENV:-production}
       WTR_HOST: ${WTR_HOST:-0.0.0.0}
       WTR_PORT: ${WTR_PORT:-9811}
-      WTR_API_KEY: ${WTR_API_KEY:-changeme}
+      WTR_API_KEY: ${WTR_API_KEY:?WTR_API_KEY must be set}
       WTR_LOG_LEVEL: ${WTR_LOG_LEVEL:-INFO}
       WTR_EXTERNAL_URL: ${WTR_EXTERNAL_URL:-http://localhost:9811}
 
@@ -34,7 +45,7 @@ services:
       WTR_HOLAEBOOK_ENABLED: ${WTR_HOLAEBOOK_ENABLED:-true}
       WTR_ELEJANDRIA_ENABLED: ${WTR_ELEJANDRIA_ENABLED:-false}
       WTR_ANNASARCHIVE_ENABLED: ${WTR_ANNASARCHIVE_ENABLED:-true}
-      WTR_GUTENBERG_ENABLED: ${WTR_GUTENBERG_ENABLED:-true}
+      WTR_GUTENBERG_ENABLED: ${WTR_GUTENBERG_ENABLED:-false}
       WTR_MEJORTORRENT_ENABLED: ${WTR_MEJORTORRENT_ENABLED:-true}
       WTR_DONTORRENT_ENABLED: ${WTR_DONTORRENT_ENABLED:-false}
       WTR_EPUBFLIX1_ENABLED: ${WTR_EPUBFLIX1_ENABLED:-true}

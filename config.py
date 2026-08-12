@@ -8,10 +8,13 @@ class Settings(BaseSettings):
     )
 
     # Server
+    ENV: str = "development"
     HOST: str = "0.0.0.0"
     PORT: int = 9811
     API_KEY: str = "changeme"
     LOG_LEVEL: str = "INFO"
+    ENABLE_DOCS: bool = True
+    CORS_ORIGINS: str = ""
     # External URL visible to *Arr apps (e.g. "http://localhost:9811")
     # If empty, falls back to "http://HOST:PORT" (but HOST may be 0.0.0.0)
     EXTERNAL_URL: str = "http://localhost:9811"
@@ -22,9 +25,9 @@ class Settings(BaseSettings):
     LECTULANDIA_ENABLED: bool = True
     ESPAEBOOK_ENABLED: bool = True
     HOLAEBOOK_ENABLED: bool = True
-    ELEJANDRIA_ENABLED: bool = True
+    ELEJANDRIA_ENABLED: bool = False
     ANNASARCHIVE_ENABLED: bool = True
-    GUTENBERG_ENABLED: bool = True
+    GUTENBERG_ENABLED: bool = False
     MEJORTORRENT_ENABLED: bool = True
     DONTORRENT_ENABLED: bool = False
     # New providers
@@ -86,6 +89,14 @@ class Settings(BaseSettings):
 
     # Proxy (opcional)
     HTTP_PROXY: str = ""
+
+    # Download security
+    DOWNLOAD_TOKEN_TTL: int = 86400
+    MAX_DOWNLOAD_BYTES: int = 524288000
+    MAX_VIDEO_DOWNLOAD_BYTES: int = 2147483648
+    ZIP_MAX_UNCOMPRESSED_BYTES: int = 524288000
+    ZIP_MAX_ENTRIES: int = 100
+    ZIP_MAX_RATIO: int = 100
 
     # Translation Pipeline
     TRANSLATION_CACHE_PATH: str = ""

@@ -3,7 +3,7 @@ Tests for MejorTorrentProvider.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.scraping.http_client import ScraperResponse
 from app.providers.video.mejortorrent import MejorTorrentProvider
@@ -137,8 +137,22 @@ class TestMejorTorrentProvider:
 
     @pytest.mark.asyncio
     async def test_get_download_url_returns_id(self, provider):
-        url = await provider.get_download_url("https://example.com/file.torrent")
+        url = await provider.get_download_url("https://example.com/file.torrent", fmt="torrent")
         assert url == "https://example.com/file.torrent"
+
+    @pytest.mark.asyncio
+    async def test_tmdb_lookup_uses_json_loads(self, provider, mock_client):
+        mock_client.get.return_value = ScraperResponse(
+            status_code=200,
+            text='{"movie_results": [{"title": "Inception"}], "tv_results": []}',
+            content=b'{}',
+            headers={},
+            url="https://api.themoviedb.org/3/find/tt1375666",
+        )
+        with patch("app.providers.video.mejortorrent.settings") as mock_settings:
+            mock_settings.TMDB_API_KEY = "test-key"
+            title = await provider._resolve_imdb_to_spanish_title("tt1375666")
+        assert title == "Inception"
 
     def test_quality_to_categories_movie(self, provider):
         cats = provider._quality_to_categories("BluRay-1080p", "movie")
@@ -293,11 +307,14 @@ class TestMejorTorrentProvider:
     @pytest.mark.asyncio
     async def test_resolve_imdb_tv_results(self, provider, mock_client):
         """Test _resolve_imdb_to_spanish_title handles tv_results (lines 322-323)."""
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "movie_results": [],
-            "tv_results": [{"name": "Test Show"}],
-        }
-        mock_client.get.return_value = mock_response
-        result = await provider._resolve_imdb_to_spanish_title("tt1234567")
+        mock_client.get.return_value = ScraperResponse(
+            status_code=200,
+            text='{"movie_results": [], "tv_results": [{"name": "Test Show"}]}',
+            content=b'{}',
+            headers={},
+            url="https://api.themoviedb.org/3/find/tt1234567",
+        )
+        with patch("app.providers.video.mejortorrent.settings") as mock_settings:
+            mock_settings.TMDB_API_KEY = "test-key"
+            result = await provider._resolve_imdb_to_spanish_title("tt1234567")
         assert result == "Test Show"

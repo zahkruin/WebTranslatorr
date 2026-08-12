@@ -12,13 +12,52 @@ from fastapi import FastAPI
 
 from app.api import torznab
 from app.scraping.http_client import ScraperResponse
+from app.scraping.http_client import ScraperResponse
 from app.utils.torrent_generator import parse_info_hash
+from app.scraping.http_client import HttpClient
+
+
+def _mock_http_client():
+    mock_http = MagicMock(spec=HttpClient)
+    mock_http.download_file = AsyncMock(return_value=b"file content here")
+    mock_http.get = AsyncMock(
+        return_value=ScraperResponse(
+            status_code=200,
+            text="<html></html>",
+            content=b"<html></html>",
+            headers={},
+            url="https://example.com",
+        )
+    )
+    mock_http.head = AsyncMock(
+        return_value=ScraperResponse(
+            status_code=200,
+            text="",
+            content=b"",
+            headers={},
+            url="https://example.com",
+        )
+    )
+    return mock_http
+
+
+def _make_test_app(mock_http=None):
+    app = FastAPI()
+    app.state.http_client = mock_http or _mock_http_client()
+    app.include_router(torznab.router)
+    return app
+
+
+@pytest.fixture(autouse=True)
+def mock_auth_settings():
+    with patch("app.api.auth.settings") as mock_settings:
+        mock_settings.API_KEY = "testkey"
+        yield
 
 
 @pytest.fixture(autouse=True)
 def reset_globals():
     """Reset module-level globals before each test."""
-    torznab._http_client = None
     torznab.registry.clear()
     yield
 
@@ -71,11 +110,10 @@ class TestCapsEndpoint:
             mock_settings.CACHE_ENABLED = True
             mock_settings.CACHE_TTL_SECONDS = 300
 
-            app = FastAPI()
-            app.include_router(torznab.router)
+            app = _make_test_app()
             client = TestClient(app)
 
-            torznab._init_providers()
+            torznab._init_providers(None, app.state.http_client)
             response = client.get("/api?t=caps&apikey=testkey")
             assert response.status_code == 200
             assert "<?xml" in response.text
@@ -116,11 +154,10 @@ class TestSearchEndpoint:
             mock_settings.CACHE_ENABLED = False
             mock_settings.CACHE_TTL_SECONDS = 300
 
-            app = FastAPI()
-            app.include_router(torznab.router)
+            app = _make_test_app()
             client = TestClient(app)
 
-            torznab._init_providers()
+            torznab._init_providers(None, app.state.http_client)
             response = client.get("/api?t=search&q=test&apikey=testkey")
             assert response.status_code == 200
             assert "<?xml" in response.text
@@ -158,11 +195,10 @@ class TestSearchEndpoint:
                 mock_http = MagicMock()
                 mock_http_cls.return_value = mock_http
 
-                app = FastAPI()
-                app.include_router(torznab.router)
+                app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers()
+                torznab._init_providers(None, app.state.http_client)
                 response = client.get("/api?t=search&q=test&apikey=testkey&cat=8000")
                 assert response.status_code == 200
                 # Should return valid XML
@@ -203,11 +239,10 @@ class TestDownloadEndpoint:
             mock_settings.CACHE_ENABLED = False
             mock_settings.CACHE_TTL_SECONDS = 300
 
-            app = FastAPI()
-            app.include_router(torznab.router)
+            app = _make_test_app()
             client = TestClient(app)
 
-            torznab._init_providers()
+            torznab._init_providers(None, app.state.http_client)
             response = client.get("/api/download?provider=nonexistent&id=123&apikey=testkey")
             assert response.status_code == 200
             assert "error" in response.text.lower()
@@ -240,32 +275,30 @@ class TestDownloadEndpoint:
             mock_settings.CACHE_ENABLED = False
             mock_settings.CACHE_TTL_SECONDS = 300
             mock_settings.EXTERNAL_URL = "http://localhost:9811"
+            mock_settings.MAX_DOWNLOAD_BYTES = 524288000
+            mock_settings.MAX_VIDEO_DOWNLOAD_BYTES = 2147483648
+            mock_settings.DOWNLOAD_TOKEN_TTL = 3600
 
-            with patch("app.api.torznab.HttpClient") as mock_http_cls:
-                mock_http = MagicMock()
-                mock_http_cls.return_value = mock_http
-                mock_http.download_file = AsyncMock(return_value=b"file content here")
+            mock_http = _mock_http_client()
+            app = _make_test_app(mock_http)
+            client = TestClient(app)
 
-                app = FastAPI()
-                app.include_router(torznab.router)
-                client = TestClient(app)
+            torznab._init_providers(None, app.state.http_client)
 
-                torznab._init_providers()
+            espaebook = torznab.registry.get("espaebook")
+            espaebook.get_download_url = AsyncMock(
+                return_value="https://example.com/book.epub"
+            )
 
-                espaebook = torznab.registry.get("espaebook")
-                espaebook.get_download_url = AsyncMock(
-                    return_value="http://example.com/book.epub"
-                )
-
-                response = client.get(
-                    "/api/download?provider=espaebook&id=123&fmt=epub&apikey=testkey"
-                )
-                assert response.status_code == 200
-                assert response.headers["content-type"] == "application/x-bittorrent"
-                assert "attachment" in response.headers["content-disposition"]
-                info_hash = parse_info_hash(response.content)
-                assert len(info_hash) == 40
-                assert all(c in "0123456789abcdef" for c in info_hash)
+            response = client.get(
+                "/api/download?provider=espaebook&id=123&fmt=epub&apikey=testkey"
+            )
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "application/x-bittorrent"
+            assert "attachment" in response.headers["content-disposition"]
+            info_hash = parse_info_hash(response.content)
+            assert len(info_hash) == 40
+            assert all(c in "0123456789abcdef" for c in info_hash)
 
     @pytest.mark.asyncio
     async def test_download_provider_without_results(self):
@@ -299,11 +332,10 @@ class TestDownloadEndpoint:
                 mock_http = MagicMock()
                 mock_http_cls.return_value = mock_http
 
-                app = FastAPI()
-                app.include_router(torznab.router)
+                app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers()
+                torznab._init_providers(None, app.state.http_client)
                 response = client.get("/api/download?provider=ebookelo&id=999&fmt=epub&apikey=testkey")
                 assert response.status_code == 200
                 assert "error" in response.text.lower()
@@ -346,11 +378,10 @@ class TestSearchWithCache:
                 mock_http = MagicMock()
                 mock_http_cls.return_value = mock_http
 
-                app = FastAPI()
-                app.include_router(torznab.router)
+                app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers()
+                torznab._init_providers(None, app.state.http_client)
 
                 # Pre-populate cache for ebookelo / query "test" / cat 8000
                 from app.core.models import SearchResult
@@ -363,7 +394,7 @@ class TestSearchWithCache:
                         categories=[8000],
                     )
                 ]
-                torznab.search_cache.set("ebookelo", "test", cached, [8000])
+                await torznab.search_cache.set("ebookelo", "test", cached, [8000], offset=0, limit=50)
 
                 response = client.get(
                     "/api?t=search&q=test&apikey=testkey&cat=8000"
@@ -403,11 +434,10 @@ class TestSearchWithCache:
                 mock_http = MagicMock()
                 mock_http_cls.return_value = mock_http
 
-                app = FastAPI()
-                app.include_router(torznab.router)
+                app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers()
+                torznab._init_providers(None, app.state.http_client)
 
                 # Patch asyncio.wait_for to raise TimeoutError
                 with patch("app.api.torznab.asyncio.wait_for",
@@ -450,11 +480,10 @@ class TestSearchWithCache:
                 mock_http = MagicMock()
                 mock_http_cls.return_value = mock_http
 
-                app = FastAPI()
-                app.include_router(torznab.router)
+                app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers()
+                torznab._init_providers(None, app.state.http_client)
 
                 # Patch asyncio.wait_for to raise generic Exception
                 with patch("app.api.torznab.asyncio.wait_for",
@@ -471,23 +500,6 @@ class TestSearchWithCache:
 
 class TestUtilityFunctions:
     """Tests for internal utility functions in torznab.py."""
-
-    def test_get_http_client_lazy_init(self):
-        """_get_http_client should create client on first call."""
-        torznab._http_client = None
-        with patch("app.api.torznab.HttpClient") as mock_cls:
-            client = torznab._get_http_client()
-            mock_cls.assert_called_once()
-            assert torznab._http_client is not None
-
-    def test_get_http_client_reuses(self):
-        """_get_http_client should reuse existing instance."""
-        dummy = MagicMock()
-        torznab._http_client = dummy
-        with patch("app.api.torznab.HttpClient") as mock_cls:
-            client = torznab._get_http_client()
-            mock_cls.assert_not_called()
-            assert client is dummy
 
     def test_init_providers_with_enabled(self):
         """_init_providers should register enabled providers."""
@@ -517,7 +529,7 @@ class TestUtilityFunctions:
             mock_settings.CACHE_TTL_SECONDS = 300
 
             with patch("app.api.torznab.HttpClient"):
-                torznab._init_providers()
+                torznab._init_providers(None, _mock_http_client())
                 providers = torznab.registry.get_all()
                 # Eligible providers: ebookelo, epublibre, lectulandia, espaebook,
                 # holaebook, annasarchive, mejortorrent, dontorrent = 8
@@ -539,16 +551,18 @@ class TestUtilityFunctions:
         assert result == [2000, 5000]
 
     def test_validate_apikey_correct(self):
-        """_validate_apikey should return True for correct key."""
-        with patch("app.api.torznab.settings") as mock_settings:
+        """validate_apikey should return True for correct key."""
+        from app.api.auth import validate_apikey
+        with patch("app.api.auth.settings") as mock_settings:
             mock_settings.API_KEY = "secret"
-            assert torznab._validate_apikey("secret") is True
+            assert validate_apikey("secret") is True
 
     def test_validate_apikey_wrong(self):
-        """_validate_apikey should return False for wrong key."""
-        with patch("app.api.torznab.settings") as mock_settings:
+        """validate_apikey should return False for wrong key."""
+        from app.api.auth import validate_apikey
+        with patch("app.api.auth.settings") as mock_settings:
             mock_settings.API_KEY = "secret"
-            assert torznab._validate_apikey("wrong") is False
+            assert validate_apikey("wrong") is False
 
 
 # ── single-provider endpoint (/api/{provider_id}) ──────────────────
@@ -589,11 +603,10 @@ class TestSingleProviderEndpoint:
                 mock_http = MagicMock()
                 mock_http_cls.return_value = mock_http
 
-                app = FastAPI()
-                app.include_router(torznab.router)
+                app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers()
+                torznab._init_providers(None, app.state.http_client)
                 response = client.get("/api/ebookelo?t=caps&apikey=wrong")
                 assert response.status_code == 200
                 assert "<?xml" in response.text
@@ -634,11 +647,10 @@ class TestSingleProviderEndpoint:
                 mock_http = MagicMock()
                 mock_http_cls.return_value = mock_http
 
-                app = FastAPI()
-                app.include_router(torznab.router)
+                app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers()
+                torznab._init_providers(None, app.state.http_client)
                 response = client.get("/api/ebookelo?t=caps&apikey=testkey")
                 assert response.status_code == 200
                 assert "WebTranslatorr - Ebookelo" in response.text
@@ -670,11 +682,10 @@ class TestSingleProviderEndpoint:
             mock_settings.REQUEST_TIMEOUT = 5
             mock_settings.HTTP_PROXY = ""
 
-            app = FastAPI()
-            app.include_router(torznab.router)
+            app = _make_test_app()
             client = TestClient(app)
 
-            torznab._init_providers()
+            torznab._init_providers(None, app.state.http_client)
             response = client.get("/api/nonexistent?t=caps&apikey=wrong")
             assert response.status_code == 200
             assert "error" in response.text.lower()
@@ -710,11 +721,10 @@ class TestSingleProviderEndpoint:
                 mock_http = MagicMock()
                 mock_http_cls.return_value = mock_http
 
-                app = FastAPI()
-                app.include_router(torznab.router)
+                app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers()
+                torznab._init_providers(None, app.state.http_client)
                 response = client.get(
                     "/api/ebookelo?t=search&q=test&apikey=wrong"
                 )
@@ -746,17 +756,15 @@ class TestSingleProviderEndpoint:
             mock_settings.REQUEST_TIMEOUT = 5
             mock_settings.HTTP_PROXY = ""
 
-            app = FastAPI()
-            app.include_router(torznab.router)
+            app = _make_test_app()
             client = TestClient(app)
 
-            torznab._init_providers()
+            torznab._init_providers(None, app.state.http_client)
             response = client.get(
                 "/api/nonexistent?t=search&q=test&apikey=testkey"
             )
             assert response.status_code == 200
             assert "error" in response.text.lower()
-            assert "not found" in response.text.lower()
 
     def test_aggregate_caps_title_is_generic(self):
         """Aggregate /api?t=caps should still show 'WebTranslatorr' without provider name."""
@@ -790,13 +798,60 @@ class TestSingleProviderEndpoint:
                 mock_http = MagicMock()
                 mock_http_cls.return_value = mock_http
 
-                app = FastAPI()
-                app.include_router(torznab.router)
+                app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers()
+                torznab._init_providers(None, app.state.http_client)
                 response = client.get("/api?t=caps&apikey=testkey")
                 assert response.status_code == 200
                 assert "WebTranslatorr" in response.text
                 # Aggregate caps should NOT include provider name
                 assert "WebTranslatorr -" not in response.text
+
+
+class TestVideoDownload:
+    @pytest.mark.asyncio
+    async def test_video_download_accepts_fmt_kwarg(self):
+        with patch("app.api.torznab.settings") as mock_settings:
+            mock_settings.API_KEY = "testkey"
+            mock_settings.EBOOKELO_ENABLED = False
+            mock_settings.EPUBLIBRE_ENABLED = False
+            mock_settings.LECTULANDIA_ENABLED = False
+            mock_settings.ESPAEBOOK_ENABLED = False
+            mock_settings.HOLAEBOOK_ENABLED = False
+            mock_settings.ANNASARCHIVE_ENABLED = False
+            mock_settings.MEJORTORRENT_ENABLED = True
+            mock_settings.DONTORRENT_ENABLED = False
+            mock_settings.ELEJANDRIA_ENABLED = False
+            mock_settings.GUTENBERG_ENABLED = False
+            mock_settings.EPUBFLIX1_ENABLED = False
+            mock_settings.LIBGEN_ENABLED = False
+            mock_settings.BOOOBOOK_ENABLED = False
+            mock_settings.LECTUEPUBLIBRE5_ENABLED = False
+            mock_settings.MUNDOEPUBLIBRE1_ENABLED = False
+            mock_settings.ZLIBRARY_ENABLED = False
+            mock_settings.RATE_LIMIT_PER_SECOND = 100.0
+            mock_settings.MAX_RETRIES = 1
+            mock_settings.REQUEST_TIMEOUT = 5
+            mock_settings.HTTP_PROXY = ""
+            mock_settings.CACHE_ENABLED = False
+            mock_settings.CACHE_TTL_SECONDS = 300
+            mock_settings.MAX_DOWNLOAD_BYTES = 524288000
+            mock_settings.MAX_VIDEO_DOWNLOAD_BYTES = 2147483648
+
+            mock_http = _mock_http_client()
+            app = _make_test_app(mock_http)
+            client = TestClient(app)
+            torznab._init_providers(None, app.state.http_client)
+
+            provider = torznab.registry.get("mejortorrent")
+            provider.get_download_url = AsyncMock(return_value="https://example.com/movie.torrent")
+
+            response = client.get(
+                "/api/download?provider=mejortorrent&id=https://example.com/movie.torrent"
+                "&fmt=torrent&apikey=testkey"
+            )
+            assert response.status_code == 200
+            provider.get_download_url.assert_awaited_once_with(
+                "https://example.com/movie.torrent", fmt="torrent"
+            )

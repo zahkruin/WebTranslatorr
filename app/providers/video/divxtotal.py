@@ -449,7 +449,7 @@ class DivxtotalProvider(BaseProvider):
             pass
         return 0
 
-    async def get_download_url(self, internal_id: str) -> str:
+    async def get_download_url(self, internal_id: str, **kwargs) -> str:
         """
         The download_url is set during search enrichment.
         internal_id is the URL to the detail page or the magnet/torrent link.
