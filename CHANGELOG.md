@@ -7,6 +7,25 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-01
+
+### Added
+- **BookSee provider**: scraping de en.booksee.org (2.4M libros, PDF, sin protecciones)
+- **OceanOfPDF provider**: scraping de oceanofpdf.com (WordPress, PDF/EPUB/MOBI, sin protecciones)
+- **Panel de administración web**: frontend HTML/JS/CSS autocontenido accesible en `/` para gestionar providers, API keys y configuración sin editar `.env` ni reiniciar la aplicación. Incluye 3 pestañas: Providers (tabla con toggles enable/disable, edición de dominio, filtro por tipo, reload registry), Settings (API keys con toggle visibilidad, URLs externas, proxy), y Readarr (gestión de instancias, test de conexión, sincronización one-click).
+- **Persistencia de configuración en SQLite**: nueva capa `app/persistence/` con esquema de 3 tablas (`provider_config`, `settings`, `readarr_instances`). La configuración de providers (habilitado/deshabilitado, dominio) y las settings globales (API key, URLs, API keys externas) se almacenan en `data/webtranslatorr.db` y se gestionan en runtime.
+- **Migración automática env vars → SQLite**: en el primer arranque, todas las variables de entorno existentes se migran automáticamente a SQLite. Arranques posteriores usan la DB como fuente de verdad, con fallback a env vars para claves no presentes en DB.
+- **Sincronización con Readarr**: nuevo servicio `ReadarrSyncer` (`app/services/readarr_syncer.py`) y endpoints `/api/admin/readarr/*` que permiten configurar instancias Readarr y sincronizar automáticamente los providers de libros activos como indexers Torznab individuales (estilo Prowlarr). Incluye test de conectividad y opción de eliminar indexers huérfanos.
+- **Endpoints de administración**: `GET/PUT /api/admin/providers`, `POST /api/admin/providers/reload`, `GET/PUT /api/admin/settings`, CRUD `/api/admin/readarr`, `POST /api/admin/readarr/{id}/sync`, `POST /api/admin/readarr/{id}/test`.
+- **Hot-reload de providers**: cambios en la configuración (habilitar/deshabilitar provider) se aplican en runtime sin reinicio mediante `POST /api/admin/providers/reload`, que re-registra providers desde la DB.
+
+### Changed
+- `_init_providers()` ahora consulta la base de datos vía `ConfigManager` en lugar de leer directamente de `config.settings`. Mantiene fallback a env vars para compatibilidad con tests.
+- `_validate_apikey()` ahora es asíncrona y valida contra la DB (con fallback a env vars).
+- `app/server.py` inicializa la base de datos SQLite y el `ConfigManager` en `lifespan()`, sirve archivos estáticos desde `static/`, y registra los DomainConfigs dinámicamente desde la DB.
+- La configuración vía variables de entorno (`WTR_*_ENABLED`, `WTR_*_DOMAIN`, etc.) sigue siendo soportada como fuente inicial en el primer arranque, pero la DB prevalece en arranques posteriores.
+- Ruta raíz `/` movida de `health.py` (`/api/root`) para servir el panel de administración.
+
 ## [0.2.1] — 2026-06-29
 
 ### Fixed

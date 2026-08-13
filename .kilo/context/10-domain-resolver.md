@@ -17,7 +17,9 @@ DomainResolver
     │   ├── provider_id, default_domain
     │   ├── privtree_path (ruta en privtr.ee)
     │   ├── telegram_channel (canal de Telegram)
-    │   └── known_domain_pattern (regex)
+    │   ├── shadowlibraries_path (ruta en shadowlibraries.github.io)
+    │   ├── known_domain_pattern (regex)
+    │   └── mirrors (lista de URLs alternativas)
     │
     ├── ResolvedDomain (estado actual)
     │   ├── url, resolved_at, source
@@ -25,9 +27,10 @@ DomainResolver
     │   └── persistido en data/domains.json
     │
     ├── Cadena de estrategias (en orden):
-    │   ├── 1. PrivtreeStrategy    (scraping de privtr.ee)
-    │   ├── 2. TelegramPublicStrategy (scraping de t.me/s/)
-    │   └── 3. HealthCheckStrategy    (HTTP HEAD al dominio conocido)
+    │   ├── 1. ShadowLibrariesStrategy (shadowlibraries.github.io)
+    │   ├── 2. PrivtreeStrategy    (scraping de privtr.ee)
+    │   ├── 3. TelegramPublicStrategy (scraping de t.me/s/)
+    │   └── 4. HealthCheckStrategy    (HTTP HEAD al dominio conocido)
     │
     └── Background loop: domain_check_loop (cada 30 min)
 ```
@@ -43,20 +46,27 @@ DomainResolver
 ```
 1. Obtener DomainConfig del provider
 2. Intentar cada estrategia en orden:
-   a. PrivtreeStrategy.resolve(config, http_client)
+   a. ShadowLibrariesStrategy.resolve(config, http_client)
+      - GET https://shadowlibraries.github.io/{config.shadowlibraries_path}
+      - Buscar enlaces que matcheen known_domain_pattern
+      - Limpiar query params (?r=...) con urlparse → scheme://netloc
+      - Validar cada candidato con HTTP HEAD (timeout 10s)
+      - Devolver el primero que responda < 400
+   
+   b. PrivtreeStrategy.resolve(config, http_client)
       - GET https://privtr.ee/{config.privtree_path}
       - Buscar enlaces que matcheen known_domain_pattern
       - Si encuentra → validar con HTTP HEAD → devolver
    
-   b. TelegramPublicStrategy.resolve(config, http_client)
+   c. TelegramPublicStrategy.resolve(config, http_client)
       - GET https://t.me/s/{config.telegram_channel}
       - Buscar en mensajes (orden inverso, más reciente primero)
       - Si encuentra → validar con HTTP HEAD → devolver
    
-   c. HealthCheckStrategy.resolve(config, http_client)
-      - HTTP HEAD al dominio por defecto
+   d. HealthCheckStrategy.resolve(config, http_client)
+      - HTTP HEAD al dominio por defecto o mirrors
       - Si responde < 400 → devolver dominio (siguiendo redirects)
-      - Si falla → devolver None
+      - Si falla → intentar mirrors hardcodeados → devolver None
 3. Si ninguna estrategia funciona → mantener el último dominio conocido
 4. Si el dominio cambió → notificar callbacks + persistir
 ```
@@ -73,15 +83,31 @@ async def _validate_domain(self, url: str) -> bool:
     return response.status_code < 400
 ```
 
-Las estrategias Privtree y Telegram validan el candidato con HTTP HEAD antes de aceptarlo. La estrategia HealthCheck ya valida implícitamente.
+Las estrategias ShadowLibraries, Privtree y Telegram validan el candidato con HTTP HEAD antes de aceptarlo. La estrategia HealthCheck ya valida implícitamente.
 
 ---
 
 ## Estrategias de Resolución
 
-### 1. PrivtreeStrategy
+### 1. ShadowLibrariesStrategy (NUEVA — máxima prioridad)
 
-**Archivo:** `app/services/domain_strategies.py:50-98`
+**Archivo:** `app/services/domain_strategies.py:50-118`
+
+- Fuente: `https://shadowlibraries.github.io/{path}`
+- GitHub Pages — no tiene protección Cloudflare, accesible con HTTP simple
+- Extrae enlaces que contengan el patrón del dominio (ej: `annas-archive`)
+- Limpia query params de referral (`?r=...`) con `urlparse`
+- Valida cada candidato con HTTP HEAD (timeout 10s)
+- Devuelve el primer candidato que responda < 400
+
+**Providers que usan esta estrategia:**
+| Provider | shadowlibraries_path |
+|----------|---------------------|
+| annasarchive | `DirectDownloads/AnnasArchive/` |
+
+### 2. PrivtreeStrategy
+
+**Archivo:** `app/services/domain_strategies.py:120-168`
 
 - Fuente: `https://privtr.ee/{path}`
 - Los sitios mantienen una landing page en privtr.ee con enlaces al dominio actual
@@ -94,9 +120,9 @@ Las estrategias Privtree y Telegram validan el candidato con HTTP HEAD antes de 
 | mejortorrent | `@mejortorrent` |
 | dontorrent | `@dontorrent` |
 
-### 2. TelegramPublicStrategy
+### 3. TelegramPublicStrategy
 
-**Archivo:** `app/services/domain_strategies.py:101-176`
+**Archivo:** `app/services/domain_strategies.py:170-245`
 
 - Fuente: `https://t.me/s/{channel}` (vista web pública de Telegram)
 - No requiere API key ni autenticación
@@ -110,9 +136,9 @@ Las estrategias Privtree y Telegram validan el candidato con HTTP HEAD antes de 
 | mejortorrent | `MejorTorrentAp` |
 | dontorrent | `DonTorrent` |
 
-### 3. HealthCheckStrategy
+### 4. HealthCheckStrategy
 
-**Archivo:** `app/services/domain_strategies.py:179-220`
+**Archivo:** `app/services/domain_strategies.py:247-288`
 
 - Fuente: el `default_domain` del `DomainConfig`
 - Hace HTTP HEAD con `follow_redirects=True`
@@ -123,7 +149,7 @@ Las estrategias Privtree y Telegram validan el candidato con HTTP HEAD antes de 
 
 ## DomainConfig
 
-**Archivo:** `app/services/domain_strategies.py:20-27`
+**Archivo:** `app/services/domain_strategies.py:20-28`
 
 ```python
 @dataclass
@@ -132,7 +158,9 @@ class DomainConfig:
     default_domain: str
     privtree_path: Optional[str] = None
     telegram_channel: Optional[str] = None
+    shadowlibraries_path: Optional[str] = None
     known_domain_pattern: str = ""
+    mirrors: list[str] = field(default_factory=list)
 ```
 
 Cada provider que necesita resolución dinámica se registra con su `DomainConfig` en el startup de FastAPI.
@@ -148,23 +176,38 @@ resolver.register_provider(DomainConfig(
 ))
 ```
 
+**Ejemplo (Anna's Archive):**
+```python
+resolver.register_provider(DomainConfig(
+    provider_id="annasarchive",
+    default_domain=settings.ANNASARCHIVE_DOMAIN,
+    shadowlibraries_path="DirectDownloads/AnnasArchive/",
+    known_domain_pattern=r"annas-archive\.\w+",
+    mirrors=[
+        "https://annas-archive.gl",
+        "https://annas-archive.pk",
+        "https://annas-archive.gd",
+    ],
+))
+```
+
 **Providers registrados actualmente:**
-| Provider | privtree | telegram |
-|----------|----------|----------|
-| mejortorrent | @mejortorrent | MejorTorrentAp |
-| dontorrent | @dontorrent | DonTorrent |
-| ebookelo | — | — |
-| epublibre | @epublibre | — |
-| lectulandia | @lectulandia | — |
-| espaebook | — | — |
-| holaebook | — | — |
-| annasarchive | — | — |
-| epubflix1 | — | — |
-| libgen | — | — |
-| booobook | — | — |
-| lectuepublibre5 | — | — |
-| mundoepublibre1 | — | — |
-| zlibrary | — | — |
+| Provider | privtree | telegram | shadowlibraries | mirrors |
+|----------|----------|----------|----------------|---------|
+| mejortorrent | @mejortorrent | MejorTorrentAp | — | — |
+| dontorrent | @dontorrent | DonTorrent | — | — |
+| annasarchive | — | — | DirectDownloads/AnnasArchive/ | .gl, .pk, .gd |
+| ebookelo | — | — | — | — |
+| epublibre | @epublibre | — | — | — |
+| lectulandia | @lectulandia | — | — | — |
+| espaebook | — | — | — | — |
+| holaebook | — | — | — | — |
+| epubflix1 | — | — | — | — |
+| libgen | — | — | — | — |
+| booobook | — | — | — | — |
+| lectuepublibre5 | — | — | — | — |
+| mundoepublibre1 | — | — | — | — |
+| zlibrary | — | — | — | — |
 
 ---
 
@@ -243,7 +286,9 @@ if settings.NUEVO_ENABLED:
         default_domain=settings.NUEVO_DOMAIN,
         privtree_path="@nuevo",          # Si existe en privtr.ee
         telegram_channel="NuevoCanal",   # Si tiene canal de Telegram
+        shadowlibraries_path="Path/En/GitHub",  # Si está en ShadowLibraries
         known_domain_pattern=r"nuevo\.\w+",
+        mirrors=["https://mirror1.com", "https://mirror2.com"],
     ))
 ```
 
@@ -259,7 +304,9 @@ if settings.NUEVO_ENABLED:
 
 3. **Telegram puede cambiar su estructura HTML** — Los selectores CSS (`tgme_widget_message_wrap`) dependen de la estructura actual de la vista web de Telegram. Si Telegram la cambia, esta estrategia fallará.
 
-4. **No todos los providers tienen privtree/telegram** — Muchos providers solo dependen del `default_domain` + `HealthCheckStrategy`.
+4. **No todos los providers tienen privtree/telegram/shadowlibraries** — Muchos providers solo dependen del `default_domain` + `HealthCheckStrategy`.
+
+5. **ShadowLibraries depende de GitHub Pages** — Si GitHub Pages está caído o el repo se mueve, esta estrategia falla. Los mirrors hardcodeados en `DomainConfig.mirrors` sirven como último recurso.
 
 ---
 

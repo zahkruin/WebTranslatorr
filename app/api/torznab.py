@@ -49,6 +49,9 @@ from app.providers.books.lelibros import LeLibrosProvider
 from app.providers.books.bajaebooks import BajaebooksProvider
 from app.providers.books.ebiblioteca import EbibliotecaProvider
 from app.providers.books.epubgratis import EpubgratisProvider
+# Plan 003 — new book providers
+from app.providers.books.booksee import BookseeProvider
+from app.providers.books.oceanofpdf import OceanOfPDFProvider
 # Integration plan — new video/torrent providers
 from app.providers.video.divxtotal import DivxtotalProvider
 from app.providers.video.elitetorrent import EliteTorrentProvider
@@ -67,11 +70,37 @@ from app.services.download_tokens import (
     verify_download,
 )
 
+# Provider registry: maps provider_id → Provider class (DB-driven init)
+_PROVIDER_CLASSES: dict[str, type] = {
+    "ebookelo": EbookeloProvider,
+    "epublibre": EpubLibreProvider,
+    "lectulandia": LectulandiaProvider,
+    "espaebook": EspaebookProvider,
+    "holaebook": HolaEbookProvider,
+    "annasarchive": AnnasArchiveProvider,
+    "mejortorrent": MejorTorrentProvider,
+    "dontorrent": DonTorrentProvider,
+    "epubflix1": Epubflix1Provider,
+    "libgen": LibgenProvider,
+    "booobook": BooobookProvider,
+    "lectuepublibre5": LectuEpubLibre5Provider,
+    "mundoepublibre1": MundoEpubLibre1Provider,
+    "zlibrary": ZLibraryProvider,
+    "lelibros": LeLibrosProvider,
+    "bajaebooks": BajaebooksProvider,
+    "ebiblioteca": EbibliotecaProvider,
+    "epubgratis": EpubgratisProvider,
+    "divxtotal": DivxtotalProvider,
+    "elitetorrent": EliteTorrentProvider,
+    "booksee": BookseeProvider,
+    "oceanofpdf": OceanOfPDFProvider,
+}
+
 router = APIRouter()
 
 
-def _init_providers(resolver=None, http_client: HttpClient | None = None):
-    """Inicializa los providers según configuración."""
+def _init_providers_from_env(resolver=None, http_client: HttpClient | None = None):
+    """Inicializa los providers según variables de entorno (fallback sin DB)."""
     if http_client is None:
         raise ValueError("http_client is required for provider initialization")
 
@@ -141,11 +170,55 @@ def _init_providers(resolver=None, http_client: HttpClient | None = None):
     if settings.ELITETORRENT_ENABLED:
         registry.register(EliteTorrentProvider(http_client, resolver))
 
+    # --- Plan 003 — new book providers ---
+    if settings.BOOKSEE_ENABLED:
+        registry.register(BookseeProvider(http_client, resolver))
+
+    if settings.OCEANOFPDF_ENABLED:
+        registry.register(OceanOfPDFProvider(http_client, resolver))
+
     # Providers configurados pero no implementados aún
     if settings.ELEJANDRIA_ENABLED:
         logging.warning("Elejandria provider is configured as enabled but not yet implemented")
     if settings.GUTENBERG_ENABLED:
         logging.warning("Gutenberg provider is configured as enabled but not yet implemented")
+
+
+async def _init_providers(
+    resolver=None,
+    http_client: HttpClient | None = None,
+    config_manager=None,
+):
+    """Inicializa providers desde DB (ConfigManager) o env vars como fallback."""
+    if http_client is None:
+        raise ValueError("http_client is required for provider initialization")
+
+    if config_manager is None:
+        _init_providers_from_env(resolver, http_client)
+        return
+
+    registry.clear()
+    providers = await config_manager.get_all_enabled_providers()
+
+    for p in providers:
+        if not p.get("enabled", True):
+            continue
+        provider_id = p["provider_id"]
+        provider_cls = _PROVIDER_CLASSES.get(provider_id)
+        if provider_cls is not None:
+            registry.register(provider_cls(http_client, resolver))
+            logging.info("Provider %s registered from DB config", provider_id)
+        else:
+            logging.warning(
+                "Unknown provider_id '%s' in DB — no class mapping", provider_id
+            )
+
+
+async def _validate_apikey(apikey: str, config_manager=None) -> bool:
+    """Valida la API key contra la DB o contra settings.API_KEY."""
+    if config_manager is not None:
+        return await config_manager.validate_api_key(apikey)
+    return validate_apikey(apikey)
 
 
 def _parse_cats(cat_str: str) -> list[int]:
@@ -203,6 +276,7 @@ async def _handle_torznab_request(
     ep: str = "",
     author: str = "",
     title: str = "",
+    lang: str = "",
 ) -> Response:
     """
     Núcleo compartido de la lógica Torznab.
@@ -275,6 +349,14 @@ async def _handle_torznab_request(
 
     # ---- Translation Pipeline integration (Phase 8) ----
     from app.services.translation_pipeline import get_translation_pipeline
+    from app.core.languages import SUPPORTED_LANGUAGES, resolve_language
+
+    _search_lang = resolve_language(lang or settings.DEFAULT_SEARCH_LANGUAGE)
+    if lang and lang.strip().lower() not in SUPPORTED_LANGUAGES:
+        logging.warning(
+            "Unsupported language '%s', falling back to '%s'",
+            lang, _search_lang.code,
+        )
 
     effective_q = q
     # Determine the English title for translation.
@@ -299,7 +381,11 @@ async def _handle_torznab_request(
             try:
                 translation_pipeline = await get_translation_pipeline()
                 if translation_pipeline is not None:
-                    result = await translation_pipeline.translate(translation_title, translation_author)
+                    result = await translation_pipeline.translate(
+                        translation_title,
+                        translation_author,
+                        target_lang=_search_lang,
+                    )
                     if result is not None:
                         translated = result.title_es
                         tl_lower = translated.lower()
@@ -474,6 +560,7 @@ async def torznab_api(
     ep: str = Query("", description="Número de episodio"),
     author: str = Query("", description="Autor (book-search)"),
     title: str = Query("", description="Título (book-search)"),
+    lang: str = Query("", description="Idioma destino (es, en, fr, de, it, pt)"),
 ):
     """
     Endpoint Torznab principal.
@@ -482,7 +569,8 @@ async def torznab_api(
     También responde a t=caps con las capabilities agregadas de todos los providers.
     """
     # Validar API key
-    if not validate_apikey(apikey):
+    config_manager = getattr(request.app.state, "config_manager", None)
+    if not await _validate_apikey(apikey, config_manager):
         # t=caps sin API key: devolver caps básicas para permitir
         # que las *Arr apps detecten el servicio (como hace Jackett)
         if t and t.lower() == "caps":
@@ -529,6 +617,7 @@ async def torznab_api(
         ep=ep,
         author=author,
         title=title,
+        lang=lang,
     )
 
 
@@ -549,7 +638,8 @@ async def download_proxy(
     Readarr espera siempre un archivo .torrent válido de los
     indexers Torznab y falla si recibe otro tipo de archivo.
     """
-    if not validate_apikey(apikey):
+    config_manager = getattr(request.app.state, "config_manager", None)
+    if not await _validate_apikey(apikey, config_manager):
         return Response(
             content=TorznabErrors.incorrect_api_key(),
             media_type="application/xml",
@@ -721,6 +811,7 @@ async def provider_torznab_api(
     ep: str = Query("", description="Número de episodio"),
     author: str = Query("", description="Autor (book-search)"),
     title: str = Query("", description="Título (book-search)"),
+    lang: str = Query("", description="Idioma destino (es, en, fr, de, it, pt)"),
 ):
     """
     Endpoint Torznab para un UNICO provider.
@@ -734,7 +825,8 @@ async def provider_torznab_api(
     provider_id_lower = provider_id.lower()
 
     # Validar API key
-    if not validate_apikey(apikey):
+    config_manager = getattr(request.app.state, "config_manager", None)
+    if not await _validate_apikey(apikey, config_manager):
         # t=caps sin API key: permitir detección del servicio
         if t and t.lower() == "caps":
             try:
@@ -797,6 +889,7 @@ async def provider_torznab_api(
         ep=ep,
         author=author,
         title=title,
+        lang=lang,
     )
 
 

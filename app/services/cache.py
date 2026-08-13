@@ -4,6 +4,7 @@ Reduces redundant scraping of the same queries within TTL window.
 """
 import asyncio
 import logging
+import re
 from typing import Optional
 
 from cachetools import TTLCache
@@ -11,6 +12,35 @@ from cachetools import TTLCache
 from config import settings
 
 logger = logging.getLogger("cache")
+
+
+STOPWORDS_EN = {
+    "the", "a", "an", "and", "or", "of", "in", "on", "to", "for",
+    "with", "at", "by", "from", "is", "it", "as", "be", "no", "not",
+    "but", "so", "if", "into", "its", "all", "has", "had", "was", "are",
+    "been", "new", "one", "two", "this", "that", "over", "up", "out",
+    "de", "la", "el", "los", "las", "del", "un", "una", "en", "y", "o",
+    "al", "por", "con", "sin", "para", "que", "es", "su",
+}
+
+
+def _normalize_query_key(raw: str) -> str:
+    if not raw:
+        return ""
+    words = raw.lower().split()
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for w in words:
+        if w not in seen:
+            seen.add(w)
+            deduped.append(w)
+    sorted_words = sorted(deduped)
+    return " ".join(w for w in sorted_words if w not in STOPWORDS_EN)
+
+
+def normalize_query_key(raw: str) -> str:
+    """Public helper: collapse a query string into a canonical, order-independent key."""
+    return _normalize_query_key(raw)
 
 
 class SearchCache:
@@ -33,7 +63,8 @@ class SearchCache:
         limit: int = 50,
     ) -> str:
         cat_part = ",".join(str(c) for c in sorted(categories)) if categories else ""
-        return f"{provider_id}|{query}|{cat_part}|{offset}|{limit}"
+        normalized_q = _normalize_query_key(query)
+        return f"{provider_id}|{normalized_q}|{cat_part}|{offset}|{limit}"
 
     async def get(
         self,

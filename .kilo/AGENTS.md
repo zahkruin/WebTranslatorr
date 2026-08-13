@@ -117,6 +117,7 @@ app/
 | B00k.Bond | `context/06-provider-strategies/booobook.md` |
 | LectuEpubLibre5 | `context/06-provider-strategies/lectuepublibre5.md` |
 | MundoEpubLibre1 | `context/06-provider-strategies/mundoepublibre1.md` |
+| OceanOfPDF | `context/06-provider-strategies/oceanofpdf.md` |
 | Z-Library | `context/06-provider-strategies/zlibrary.md` |
 | MejorTorrent | `context/06-provider-strategies/mejortorrent.md` |
 | DonTorrent | `context/06-provider-strategies/dontorrent.md` |
@@ -124,6 +125,7 @@ app/
 | Ebiblioteca | `context/06-provider-strategies/ebiblioteca.md` |
 | Bajaebooks | `context/06-provider-strategies/bajaebooks.md` |
 | LeLibros | `context/06-provider-strategies/lelibros.md` |
+| BookSee | `context/06-provider-strategies/booksee.md` |
 | DivxTotal | `context/06-provider-strategies/divxtotal.md` |
 | EliteTorrent | `context/06-provider-strategies/elitetorrent.md` |
 

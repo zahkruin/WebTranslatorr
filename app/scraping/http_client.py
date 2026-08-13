@@ -84,11 +84,11 @@ class HttpClient:
         if not is_safe_url(final_url):
             raise ValueError(f"Unsafe destination URL: {final_url}")
 
-    async def get(self, url: str, **kwargs) -> ScraperResponse:
+    async def get(self, url: str, *, rate_limit: Optional[float] = None, **kwargs) -> ScraperResponse:
         if not is_safe_url(url):
             raise ValueError(f"Unsafe URL: {url}")
 
-        await self._apply_rate_limit(url)
+        await self._apply_rate_limit(url, rate_limit)
         headers = kwargs.pop("headers", {})
         headers.setdefault("User-Agent", self._rotate_ua())
         headers.setdefault("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
@@ -99,7 +99,26 @@ class HttpClient:
 
         follow_redirects = kwargs.pop("follow_redirects", True)
         use_scraper = kwargs.pop("use_scraper", False)
+        use_flaresolverr = kwargs.pop("use_flaresolverr", False)
         params = kwargs.pop("params", None)
+
+        if use_flaresolverr:
+            from app.scraping.flaresolverr_client import get_flaresolverr_client
+            fs_client = get_flaresolverr_client()
+            if not fs_client.enabled:
+                raise Exception("FlareSolverr is not configured (FLARESOLVERR_URL is empty)")
+
+            fs_result = await fs_client.get(url)
+            if fs_result is None:
+                raise Exception(f"FlareSolverr returned no result for {url}")
+
+            return ScraperResponse(
+                status_code=fs_result["status_code"],
+                text=fs_result["text"],
+                content=fs_result["text"].encode("utf-8"),
+                headers=fs_result["headers"],
+                url=fs_result["url"],
+            )
 
         for attempt in range(self._max_retries):
             try:
@@ -112,7 +131,7 @@ class HttpClient:
                             params=params,
                             headers=headers,
                             allow_redirects=follow_redirects,
-                            timeout=self._client.timeout if hasattr(self._client.timeout, 'read') else self._client.timeout,
+                            timeout=self._client.timeout.read if isinstance(self._client.timeout, httpx.Timeout) else self._client.timeout,
                         ),
                     )
                     resp.raise_for_status()
@@ -264,15 +283,16 @@ class HttpClient:
         self._ua_index += 1
         return ua
 
-    async def _apply_rate_limit(self, url: str) -> None:
+    async def _apply_rate_limit(self, url: str, rate_limit: Optional[float] = None) -> None:
         domain = urlparse(url).netloc
         async with self._rate_lock:
             now = asyncio.get_event_loop().time()
             last = self._last_request.get(domain)
             if last is not None:
                 elapsed = now - last
-                if elapsed < (1.0 / self._rate_limit):
-                    await asyncio.sleep((1.0 / self._rate_limit) - elapsed)
+                effective_rate = rate_limit or self._rate_limit
+                if elapsed < (1.0 / effective_rate):
+                    await asyncio.sleep((1.0 / effective_rate) - elapsed)
             self._last_request[domain] = asyncio.get_event_loop().time()
 
     async def close(self):

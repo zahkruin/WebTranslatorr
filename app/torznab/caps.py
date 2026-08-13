@@ -131,4 +131,15 @@ class CapsGenerator:
             if 5045 in all_categories:
                 SubElement(cat, "subcat", attrib={"id": "5045", "name": "UHD"})
 
+        # Custom extension: supported languages for translation lookups
+        from app.core.languages import SUPPORTED_LANGUAGES
+        _langs_elem = SubElement(caps, "languages", attrib={
+            "default": settings.DEFAULT_SEARCH_LANGUAGE,
+        })
+        for code, lang in sorted(SUPPORTED_LANGUAGES.items()):
+            SubElement(_langs_elem, "language", attrib={
+                "code": code,
+                "name": lang.display_name,
+            })
+
         return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(caps, encoding="unicode")

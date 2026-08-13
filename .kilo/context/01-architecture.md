@@ -27,6 +27,8 @@ Cuándo consultar: para entender cómo encajan los componentes, depurar flujos e
                                        │  │  /api/download        │       │    │
                                        │  │  /health              │       │    │
                                        │  │  /api/domains/*       │       │    │
+│  /api/admin/*         │       │    │
+│  /                    │       │    │
                                        │  └───────────┬───────────┘       │    │
                                        │              │                   │    │
                                        │  ┌───────────▼───────────┐       │    │
@@ -87,15 +89,17 @@ Cuándo consultar: para entender cómo encajan los componentes, depurar flujos e
 ### 1. Startup (`app/server.py:lifespan()`)
 
 ```
-1. Crear HttpClient (shared, con rate limiting global)
-2. Crear DomainResolver (carga dominios persistidos de data/domains.json)
-3. Registrar DomainConfig por cada provider habilitado
-4. Llamar a torznab._init_providers(resolver):
+1. Inicializar base de datos SQLite (init_db) y ejecutar migración env vars → DB
+2. Crear ConfigManager (facade sobre SQLite para providers y settings)
+3. Crear HttpClient (shared, con rate limiting global)
+4. Crear DomainResolver (carga dominios persistidos de data/domains.json)
+5. Registrar DomainConfig por cada provider habilitado (desde DB vía ConfigManager)
+6. Llamar a torznab._init_providers(resolver, config_manager):
    - Limpiar ProviderRegistry
    - Instanciar cada provider con su HttpClient y DomainResolver
-   - Registrar en el registry
-5. Ejecutar resolución inicial de dominios (resolve_all)
-6. Iniciar background task: domain_check_loop (cada DOMAIN_CHECK_INTERVAL segundos)
+   - Registrar solo providers con enabled=1 en DB
+7. Ejecutar resolución inicial de dominios (resolve_all)
+8. Iniciar background task: domain_check_loop (cada DOMAIN_CHECK_INTERVAL segundos)
 ```
 
 ### 2. Petición `GET /api?t=search&q=quijote&apikey=xxx`
@@ -142,14 +146,18 @@ Cuándo consultar: para entender cómo encajan los componentes, depurar flujos e
 config.py (Settings)
     │
     ├──► app/server.py (FastAPI app factory)
+    │       ├──► app/persistence/database.py (SQLite init + singleton connection)
+    │       │       └──► app/persistence/migration.py (env vars → DB one-shot)
+    │       ├──► app/services/config_manager.py (runtime config facade)
+    │       │       └──► app/persistence/models.py (CRUD helpers)
     │       ├──► app/api/torznab.py
     │       │       ├──► app/routing/smart_router.py
     │       │       │       ├──► app/providers/registry.py
     │       │       │       └──► app/core/categories.py
     │       │       ├──► app/providers/base.py (ABC)
     │       │       │       └──► app/core/models.py
-    │       │       ├──► app/providers/books/*.py (14 providers)
-    │       │       ├──► app/providers/video/*.py (2 providers)
+    │       │       ├──► app/providers/books/*.py (16 providers)
+    │       │       ├──► app/providers/video/*.py (4 providers)
     │       │       ├──► app/scraping/http_client.py
     │       │       ├──► app/torznab/mapper.py
     │       │       ├──► app/torznab/caps.py
@@ -160,7 +168,11 @@ config.py (Settings)
     │       ├──► app/api/domains.py
     │       │       └──► app/services/domain_resolver.py
     │       │               └──► app/services/domain_strategies.py
-    │       └──► app/services/domain_resolver.py
+    │       ├──► app/api/admin.py
+    │       │       ├──► app/services/config_manager.py
+    │       │       └──► app/services/readarr_syncer.py
+    │       ├──► app/services/domain_resolver.py
+    │       └──► static/ (frontend HTML/CSS/JS — servido via StaticFiles)
     │
     └──► app/services/cache.py
 ```
@@ -240,4 +252,11 @@ XML RSS 2.0 + namespaces torznab/newznab
 | `app/core/categories.py` | CategoryMapper |
 | `app/core/enums.py` | ContentType, SearchType |
 | `app/core/exceptions.py` | Jerarquía de excepciones |
+| `app/persistence/database.py` | Inicialización SQLite, singleton de conexión |
+| `app/persistence/migration.py` | Migración env vars → DB |
+| `app/persistence/models.py` | Funciones CRUD sobre SQLite |
+| `app/services/config_manager.py` | ConfigManager (facade runtime sobre DB) |
+| `app/services/readarr_syncer.py` | Sincronización de providers → indexers Readarr |
+| `app/api/admin.py` | Endpoints REST de administración |
+| `static/` | Frontend de administración (HTML/CSS/JS vanilla) |
 | `config.py` | Settings (Pydantic) |

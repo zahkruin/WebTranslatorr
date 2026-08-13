@@ -65,6 +65,19 @@ def reset_globals():
 # ── caps endpoint ──────────────────────────────────────────────────
 
 
+
+def _init_providers_sync(*args, **kwargs):
+    """Call async _init_providers from sync or async pytest contexts."""
+    coro = torznab._init_providers(*args, **kwargs)
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
 class TestCapsEndpoint:
     """Tests for t=caps via the /api endpoint."""
 
@@ -113,7 +126,7 @@ class TestCapsEndpoint:
             app = _make_test_app()
             client = TestClient(app)
 
-            torznab._init_providers(None, app.state.http_client)
+            _init_providers_sync(None, app.state.http_client)
             response = client.get("/api?t=caps&apikey=testkey")
             assert response.status_code == 200
             assert "<?xml" in response.text
@@ -157,7 +170,7 @@ class TestSearchEndpoint:
             app = _make_test_app()
             client = TestClient(app)
 
-            torznab._init_providers(None, app.state.http_client)
+            _init_providers_sync(None, app.state.http_client)
             response = client.get("/api?t=search&q=test&apikey=testkey")
             assert response.status_code == 200
             assert "<?xml" in response.text
@@ -198,7 +211,7 @@ class TestSearchEndpoint:
                 app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers(None, app.state.http_client)
+                _init_providers_sync(None, app.state.http_client)
                 response = client.get("/api?t=search&q=test&apikey=testkey&cat=8000")
                 assert response.status_code == 200
                 # Should return valid XML
@@ -242,7 +255,7 @@ class TestDownloadEndpoint:
             app = _make_test_app()
             client = TestClient(app)
 
-            torznab._init_providers(None, app.state.http_client)
+            _init_providers_sync(None, app.state.http_client)
             response = client.get("/api/download?provider=nonexistent&id=123&apikey=testkey")
             assert response.status_code == 200
             assert "error" in response.text.lower()
@@ -283,7 +296,7 @@ class TestDownloadEndpoint:
             app = _make_test_app(mock_http)
             client = TestClient(app)
 
-            torznab._init_providers(None, app.state.http_client)
+            _init_providers_sync(None, app.state.http_client)
 
             espaebook = torznab.registry.get("espaebook")
             espaebook.get_download_url = AsyncMock(
@@ -335,7 +348,7 @@ class TestDownloadEndpoint:
                 app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers(None, app.state.http_client)
+                _init_providers_sync(None, app.state.http_client)
                 response = client.get("/api/download?provider=ebookelo&id=999&fmt=epub&apikey=testkey")
                 assert response.status_code == 200
                 assert "error" in response.text.lower()
@@ -381,7 +394,7 @@ class TestSearchWithCache:
                 app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers(None, app.state.http_client)
+                _init_providers_sync(None, app.state.http_client)
 
                 # Pre-populate cache for ebookelo / query "test" / cat 8000
                 from app.core.models import SearchResult
@@ -437,7 +450,7 @@ class TestSearchWithCache:
                 app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers(None, app.state.http_client)
+                _init_providers_sync(None, app.state.http_client)
 
                 # Patch asyncio.wait_for to raise TimeoutError
                 with patch("app.api.torznab.asyncio.wait_for",
@@ -483,7 +496,7 @@ class TestSearchWithCache:
                 app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers(None, app.state.http_client)
+                _init_providers_sync(None, app.state.http_client)
 
                 # Patch asyncio.wait_for to raise generic Exception
                 with patch("app.api.torznab.asyncio.wait_for",
@@ -529,7 +542,7 @@ class TestUtilityFunctions:
             mock_settings.CACHE_TTL_SECONDS = 300
 
             with patch("app.api.torznab.HttpClient"):
-                torznab._init_providers(None, _mock_http_client())
+                _init_providers_sync(None, _mock_http_client())
                 providers = torznab.registry.get_all()
                 # Eligible providers: ebookelo, epublibre, lectulandia, espaebook,
                 # holaebook, annasarchive, mejortorrent, dontorrent = 8
@@ -606,7 +619,7 @@ class TestSingleProviderEndpoint:
                 app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers(None, app.state.http_client)
+                _init_providers_sync(None, app.state.http_client)
                 response = client.get("/api/ebookelo?t=caps&apikey=wrong")
                 assert response.status_code == 200
                 assert "<?xml" in response.text
@@ -650,7 +663,7 @@ class TestSingleProviderEndpoint:
                 app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers(None, app.state.http_client)
+                _init_providers_sync(None, app.state.http_client)
                 response = client.get("/api/ebookelo?t=caps&apikey=testkey")
                 assert response.status_code == 200
                 assert "WebTranslatorr - Ebookelo" in response.text
@@ -685,7 +698,7 @@ class TestSingleProviderEndpoint:
             app = _make_test_app()
             client = TestClient(app)
 
-            torznab._init_providers(None, app.state.http_client)
+            _init_providers_sync(None, app.state.http_client)
             response = client.get("/api/nonexistent?t=caps&apikey=wrong")
             assert response.status_code == 200
             assert "error" in response.text.lower()
@@ -724,7 +737,7 @@ class TestSingleProviderEndpoint:
                 app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers(None, app.state.http_client)
+                _init_providers_sync(None, app.state.http_client)
                 response = client.get(
                     "/api/ebookelo?t=search&q=test&apikey=wrong"
                 )
@@ -759,7 +772,7 @@ class TestSingleProviderEndpoint:
             app = _make_test_app()
             client = TestClient(app)
 
-            torznab._init_providers(None, app.state.http_client)
+            _init_providers_sync(None, app.state.http_client)
             response = client.get(
                 "/api/nonexistent?t=search&q=test&apikey=testkey"
             )
@@ -801,7 +814,7 @@ class TestSingleProviderEndpoint:
                 app = _make_test_app()
                 client = TestClient(app)
 
-                torznab._init_providers(None, app.state.http_client)
+                _init_providers_sync(None, app.state.http_client)
                 response = client.get("/api?t=caps&apikey=testkey")
                 assert response.status_code == 200
                 assert "WebTranslatorr" in response.text
@@ -842,7 +855,7 @@ class TestVideoDownload:
             mock_http = _mock_http_client()
             app = _make_test_app(mock_http)
             client = TestClient(app)
-            torznab._init_providers(None, app.state.http_client)
+            _init_providers_sync(None, app.state.http_client)
 
             provider = torznab.registry.get("mejortorrent")
             provider.get_download_url = AsyncMock(return_value="https://example.com/movie.torrent")

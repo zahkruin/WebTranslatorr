@@ -5,16 +5,16 @@ Used by indexer applications (Ebookerr, Prowlarr, etc.) to discover
 available providers and their capabilities programmatically.
 """
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 
-from app.api.auth import validate_apikey
+from app.api.torznab import _validate_apikey
 from app.providers.registry import registry
 
 router = APIRouter(prefix="/api/providers", tags=["providers"])
 
 
 @router.get("")
-async def list_providers(apikey: str = Query("", description="API Key")):
+async def list_providers(request: Request, apikey: str = Query("", description="API Key")):
     """List all registered providers with their capabilities.
 
     Returns JSON array with provider_id, display_name, enabled,
@@ -22,7 +22,8 @@ async def list_providers(apikey: str = Query("", description="API Key")):
 
     Used by Ebookerr/Prowlarr to auto-discover and sync indexers.
     """
-    if not validate_apikey(apikey):
+    config_manager = request.app.state.config_manager
+    if not await _validate_apikey(apikey, config_manager):
         from app.torznab.errors import TorznabErrors
         return Response(
             content=TorznabErrors.incorrect_api_key(),
@@ -46,9 +47,10 @@ async def list_providers(apikey: str = Query("", description="API Key")):
 
 
 @router.get("/{provider_id}")
-async def get_provider(provider_id: str, apikey: str = Query("", description="API Key")):
+async def get_provider(provider_id: str, request: Request, apikey: str = Query("", description="API Key")):
     """Get details for a single provider."""
-    if not validate_apikey(apikey):
+    config_manager = request.app.state.config_manager
+    if not await _validate_apikey(apikey, config_manager):
         from app.torznab.errors import TorznabErrors
         return Response(
             content=TorznabErrors.incorrect_api_key(),

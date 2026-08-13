@@ -45,13 +45,17 @@ def generate_torrent(
         b"comment": comment.encode("utf-8"),
         b"created by": created_by.encode("utf-8"),
         b"creation date": int(time.time()),
+        # Dummy announce — qBittorrent needs at least one tracker to
+        # start the torrent even when downloading purely via webseed.
+        b"announce": announce_url.encode("utf-8") if announce_url else b"",
     }
 
-    if announce_url:
-        torrent[b"announce"] = announce_url.encode("utf-8")
-
     if web_seed_url:
-        torrent[b"url-list"] = web_seed_url.encode("utf-8")
+        # BEP 19: url-list as a list.  Some libtorrent versions also
+        # support a single string as a fallback.
+        url_bytes = web_seed_url.encode("utf-8")
+        torrent[b"url-list"] = [url_bytes]
+        torrent[b"httpseeds"] = url_bytes  # BEP 17: single-string fallback
 
     torrent_bytes = bencode(torrent)
     info_hash_hex = info_hash.hex()

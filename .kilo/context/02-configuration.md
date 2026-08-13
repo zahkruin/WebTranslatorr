@@ -142,11 +142,50 @@ Cuándo consultar: para añadir/quitar providers, cambiar timeouts, configurar d
 
 ---
 
+## Gestión de Configuración vía UI (v0.3.0+)
+
+A partir de v0.3.0, WebTranslatorr incluye un **panel de administración web** accesible en `http://localhost:9811/` que permite gestionar la configuración sin editar `.env` ni reiniciar.
+
+### Funcionamiento
+
+1. **Primer arranque**: las variables de entorno del `.env` se migran automáticamente a SQLite (`data/webtranslatorr.db`).
+2. **Arranques posteriores**: la DB es la fuente de verdad. Los cambios hechos desde la UI persisten en SQLite.
+3. **Fallback**: si una clave no existe en la DB, se usa la variable de entorno como valor por defecto.
+
+### Qué se gestiona desde la UI
+
+| Pestaña | Funcionalidad |
+|---------|---------------|
+| **Providers** | Habilitar/deshabilitar providers, cambiar dominios, recargar registry en runtime |
+| **Settings** | API key, External URL, TMDB API Key, Google Books API Key, HTTP Proxy |
+| **Readarr** | Configurar instancias Readarr, test de conexión, sincronización one-click |
+
+### Persistencia
+
+- **Archivo**: `data/webtranslatorr.db` (SQLite, WAL mode)
+- **Tablas**: `provider_config` (20 providers), `settings` (11 claves), `readarr_instances`
+- **Migración**: automática en el primer arranque (`app/persistence/migration.py`)
+- **Volumen Docker**: `./data:/app/data` (la DB persiste entre reinicios de contenedor)
+
+### Variables que NO migran a la UI
+
+Las siguientes variables solo se configuran vía `.env` (afectan el arranque del servidor, no son modificables en runtime):
+
+| Variable | Motivo |
+|----------|--------|
+| `WTR_HOST`, `WTR_PORT` | Requieren reinicio del servidor |
+| `WTR_LOG_LEVEL` | Afecta la configuración de logging antes del arranque |
+| `WTR_RATE_LIMIT_PER_SECOND`, `WTR_MAX_RETRIES`, `WTR_REQUEST_TIMEOUT` | Afectan la creación del HttpClient |
+| `WTR_DOMAIN_CHECK_INTERVAL`, `WTR_DOMAIN_VALIDATION_TIMEOUT` | Configuran el background loop |
+
+---
+
 ## Jerarquía de Carga de Configuración
 
 1. **Defaults** en `config.py` (clase `Settings`)
 2. **Archivo `.env`** (si existe, cargado por `python-dotenv` via `pydantic-settings`)
 3. **Variables de entorno** del sistema (tienen prioridad máxima)
+4. **Base de datos SQLite** (`data/webtranslatorr.db`) — fuente de verdad en runtime (v0.3.0+)
 
 El prefijo `WTR_` se configura en:
 ```python
@@ -166,3 +205,7 @@ class Config:
 | `.env` | Variables de entorno reales (gitignored) |
 | `app/server.py` | Usa settings para crear HttpClient y DomainResolver |
 | `app/api/torznab.py` | Usa settings para decidir qué providers registrar |
+| `app/persistence/database.py` | Inicialización de SQLite, singleton de conexión |
+| `app/persistence/migration.py` | Migración unidireccional env vars → DB |
+| `app/persistence/models.py` | Funciones CRUD sobre SQLite |
+| `app/services/config_manager.py` | Fachada runtime sobre la DB para providers y settings |

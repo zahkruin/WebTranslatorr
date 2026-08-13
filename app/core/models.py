@@ -46,3 +46,5 @@ class ProviderCapabilities:
     supports_book_search: bool = False
     supports_tv_search: bool = False
     supports_movie_search: bool = False
+    query_language: Optional[str] = None
+    supported_languages: list[str] = field(default_factory=lambda: ["es"])

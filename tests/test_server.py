@@ -97,47 +97,61 @@ class TestLifespan:
             return_value={"mejortorrent": "https://domain.com"}
         )
         mock_task = _CancellableTask()
+        mock_config = MagicMock()
+        mock_config.get_all_enabled_providers = AsyncMock(
+            return_value=[
+                {
+                    "provider_id": "mejortorrent",
+                    "enabled": True,
+                    "domain": "",
+                    "display_name": "MejorTorrent",
+                }
+            ]
+        )
 
         with (
+            patch("app.server.init_db", new_callable=AsyncMock),
+            patch("app.server.ConfigManager", return_value=mock_config),
             patch("app.server.HttpClient", return_value=mock_http) as mock_http_cls,
             patch("app.server.DomainResolver", return_value=mock_resolver) as mock_resolver_cls,
-            patch("app.server.torznab._init_providers"),
-            # Avoid AsyncMock coroutine leakage:
-            # `lifespan` evaluates `domain_check_loop(...)` before passing it
-            # to a mocked `asyncio.create_task`. If `domain_check_loop` is
-            # patched as AsyncMock, the returned coroutine is never awaited.
+            patch("app.server.torznab._init_providers", new_callable=AsyncMock),
             patch("app.server.domain_check_loop", new=MagicMock()),
+            patch("app.services.blackhole_watcher.start_blackhole_watcher", return_value=None),
             patch("app.server.asyncio.create_task", return_value=mock_task) as mock_create_task,
+            patch("app.services.translation_pipeline.get_translation_pipeline", new_callable=AsyncMock, return_value=None),
+            patch("app.services.translation_pipeline.shutdown_translation_pipeline", new_callable=AsyncMock),
         ):
             app = create_app()
 
-            # Enter lifespan via context manager
             with TestClient(app) as client:
                 response = client.get("/health")
                 assert response.status_code == 200
 
-            # After TestClient exits → lifespan shutdown completed
-
-            # Verify startup actions
             mock_http_cls.assert_called_once()
             mock_resolver_cls.assert_called_once()
             assert mock_resolver.register_provider.call_count > 0
             mock_resolver.resolve_all.assert_awaited_once()
-            mock_create_task.assert_called_once()
+            assert mock_create_task.call_count >= 1
 
-            # Verify shutdown actions
-            mock_task.cancel.assert_called_once()
+            mock_task.cancel.assert_called()
             mock_http.close.assert_awaited_once()
 
     def test_lifespan_disabled_providers_not_registered(self):
-        """Lifespan should only register enabled providers."""
+        """Lifespan should only register enabled providers from ConfigManager."""
+        mock_config = MagicMock()
+        mock_config.get_all_enabled_providers = AsyncMock(return_value=[])
+
         with (
+            patch("app.server.init_db", new_callable=AsyncMock),
+            patch("app.server.ConfigManager", return_value=mock_config),
             patch("app.server.HttpClient") as mock_http_cls,
             patch("app.server.DomainResolver") as mock_resolver_cls,
-            patch("app.server.torznab._init_providers"),
-            # See rationale in `test_lifespan_startup_creates_http_client_and_resolver`.
+            patch("app.server.torznab._init_providers", new_callable=AsyncMock),
             patch("app.server.domain_check_loop", new=MagicMock()),
             patch("app.server.asyncio.create_task") as mock_create_task,
+            patch("app.services.blackhole_watcher.start_blackhole_watcher", return_value=None),
+            patch("app.services.translation_pipeline.get_translation_pipeline", new_callable=AsyncMock, return_value=None),
+            patch("app.services.translation_pipeline.shutdown_translation_pipeline", new_callable=AsyncMock),
             patch("app.server.settings") as mock_settings,
         ):
             mock_http = AsyncMock()
@@ -150,17 +164,11 @@ class TestLifespan:
             mock_task = _CancellableTask()
             mock_create_task.return_value = mock_task
 
-            # Required settings for create_app() — LOG_LEVEL is used at server.py:128
             mock_settings.LOG_LEVEL = "INFO"
-
-            # All providers disabled
-            mock_settings.MEJORTORRENT_ENABLED = False
-            mock_settings.DONTORRENT_ENABLED = False
-            mock_settings.EPUBLIBRE_ENABLED = False
-            mock_settings.LECTULANDIA_ENABLED = False
-            mock_settings.ESPAEBOOK_ENABLED = False
-            mock_settings.HOLAEBOOK_ENABLED = False
-            mock_settings.ANNASARCHIVE_ENABLED = False
+            mock_settings.ENV = "development"
+            mock_settings.ENABLE_DOCS = True
+            mock_settings.CORS_ORIGINS = "*"
+            mock_settings.EXTERNAL_URL = "http://localhost:9811"
             mock_settings.RATE_LIMIT_PER_SECOND = 2.0
             mock_settings.MAX_RETRIES = 3
             mock_settings.REQUEST_TIMEOUT = 30
@@ -169,10 +177,8 @@ class TestLifespan:
             mock_settings.DOMAIN_CHECK_INTERVAL = 1800
 
             app = create_app()
-            client = TestClient(app)
+            with TestClient(app) as client:
+                response = client.get("/health")
+                assert response.status_code == 200
 
-            response = client.get("/health")
-            assert response.status_code == 200
-
-            # No providers should be registered
             assert mock_resolver.register_provider.call_count == 0

@@ -9,10 +9,13 @@ con fallback automático.
 import re
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from bs4 import BeautifulSoup
+
+from urllib.parse import urlparse
+
 
 logger = logging.getLogger("domain.strategies")
 
@@ -24,8 +27,10 @@ class DomainConfig:
     default_domain: str
     privtree_path: Optional[str] = None         # ej: "@mejortorrent"
     telegram_channel: Optional[str] = None       # ej: "MejorTorrentAp"
+    shadowlibraries_path: Optional[str] = None   # ej: "DirectDownloads/AnnasArchive/"
     known_domain_pattern: str = ""               # regex: r"mejortorrent\.\w+"
     current_domain: Optional[str] = None
+    mirrors: list[str] = field(default_factory=list)
 
 
 class DomainStrategy(ABC):
@@ -186,6 +191,62 @@ class TelegramPublicStrategy(DomainStrategy):
         return f"{parsed.scheme}://{parsed.netloc}"
 
 
+class ShadowLibrariesStrategy(DomainStrategy):
+    """
+    Estrategia de resolución vía scraping de shadowlibraries.github.io.
+
+    ShadowLibraries mantiene una lista estática de mirrors para ciertos
+    providers en GitHub Pages. Escrapea la página de GitHub Pages,
+    extrae los enlaces que coincidan con el patrón del dominio y los valida.
+    Prioridad máxima para providers que usan este método (ej: annasarchive).
+    """
+
+    BASE_URL = "https://shadowlibraries.github.io"
+
+    @property
+    def name(self) -> str:
+        return "shadowlibraries"
+
+    async def resolve(self, config: DomainConfig, http_client) -> Optional[str]:
+        if not config.shadowlibraries_path:
+            return None
+
+        url = f"{self.BASE_URL}/{config.shadowlibraries_path}"
+        logger.debug(f"[shadowlibraries] Fetching {url}")
+
+        try:
+            response = await http_client.get(url)
+            soup = BeautifulSoup(response.text, "lxml")
+
+            pattern = re.compile(config.known_domain_pattern, re.IGNORECASE)
+            candidates = []
+
+            for link in soup.select('a[href*="annas-archive"]'):
+                href = link.get("href", "")
+                if pattern.search(href):
+                    parsed = urlparse(href)
+                    domain = f"{parsed.scheme}://{parsed.netloc}"
+                    if domain not in candidates:
+                        candidates.append(domain)
+
+            for domain in candidates:
+                logger.debug(f"[shadowlibraries] Validating candidate: {domain}")
+                try:
+                    resp = await http_client.head(domain, follow_redirects=True, timeout=10)
+                    if resp.status_code < 400:
+                        logger.info(f"[shadowlibraries] Resolved {config.provider_id} → {domain}")
+                        return domain
+                except Exception as e:
+                    logger.debug(f"[shadowlibraries] Candidate {domain} failed: {e}")
+
+            logger.warning(f"[shadowlibraries] No valid domain found for {config.provider_id}")
+            return None
+
+        except Exception as e:
+            logger.warning(f"[shadowlibraries] Failed for {config.provider_id}: {e}")
+            return None
+
+
 class HealthCheckStrategy(DomainStrategy):
     """
     Estrategia de último recurso: verificar que el dominio conocido sigue vivo.
@@ -232,6 +293,7 @@ class HealthCheckStrategy(DomainStrategy):
 
 # Orden predeterminado de estrategias (de mayor a menor fiabilidad)
 DEFAULT_STRATEGIES: list[DomainStrategy] = [
+    ShadowLibrariesStrategy(),
     PrivtreeStrategy(),
     TelegramPublicStrategy(),
     HealthCheckStrategy(),

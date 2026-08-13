@@ -30,7 +30,7 @@ curl http://localhost:9811/health
 - Host: `9811` → Container: `9811`
 
 **Volúmenes:**
-- `./data:/app/data` — Persistencia de dominios resueltos
+- `./data:/app/data` — Persistencia de configuración (SQLite `webtranslatorr.db`) y dominios resueltos (`domains.json`)
 
 **Uso de imagen pre-built:**
 ```yaml
@@ -121,6 +121,24 @@ URL en *Arr: `http://webtranslatorr:9811/api`
 
 ---
 
+## Panel de Administración Web (v0.3.0+)
+
+A partir de v0.3.0, WebTranslatorr incluye un panel de administración accesible en la raíz:
+
+```bash
+# Acceder al panel de administración
+open http://localhost:9811/
+```
+
+El panel permite:
+- Habilitar/deshabilitar providers sin editar `.env` ni reiniciar
+- Gestionar API keys, URLs externas y proxy
+- Configurar instancias Readarr y sincronizar indexers one-click
+
+La configuración se persiste en `data/webtranslatorr.db` (SQLite) y sobrevive a reinicios del contenedor gracias al volumen `./data:/app/data`.
+
+---
+
 ## Verificación de Salud
 
 ```bash
@@ -189,3 +207,5 @@ curl -X POST http://localhost:9811/api/domains/refresh
 | `.github/workflows/docker.yml` | CI/CD |
 | `main.py` | Entry point |
 | `config.py` | Configuración Pydantic |
+| `app/persistence/` | Persistencia SQLite |
+| `static/` | Frontend de administración |

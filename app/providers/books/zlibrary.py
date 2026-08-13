@@ -41,7 +41,8 @@ class ZLibraryProvider(BaseProvider):
             display_name="Z-Library",
             base_url=domain,
             http_client=http_client,
-            categories=[7000, 7020, 8000, 8010]
+            categories=[7000, 7020, 8000, 8010],
+            query_language="es",
         )
 
     async def search(
@@ -67,12 +68,13 @@ class ZLibraryProvider(BaseProvider):
 
         results = []
         encoded_query = quote_plus(query_to_use)
+        lang_code = self.query_language or "es"
 
         # Try multiple search URL patterns (Z-Library has changed patterns over time)
         search_urls = [
-            f"{self.base_url}/s/{encoded_query}/?language=es&ext=epub",
+            f"{self.base_url}/s/{encoded_query}/?language={lang_code}&ext=epub",
             f"{self.base_url}/s/{encoded_query}?language=spanish&ext=epub",
-            f"{self.base_url}/search?q={encoded_query}&lang=es",
+            f"{self.base_url}/search?q={encoded_query}&lang={lang_code}",
         ]
 
         resp = None

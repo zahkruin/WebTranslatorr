@@ -2,6 +2,7 @@
 Security tests for download endpoints.
 """
 
+import asyncio
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -47,6 +48,14 @@ def _enable_minimal_providers(mock_settings):
     mock_settings.LECTUEPUBLIBRE5_ENABLED = False
     mock_settings.MUNDOEPUBLIBRE1_ENABLED = False
     mock_settings.ZLIBRARY_ENABLED = False
+    mock_settings.BOOKSEE_ENABLED = False
+    mock_settings.OCEANOFPDF_ENABLED = False
+    mock_settings.LELIBROS_ENABLED = False
+    mock_settings.BAJAEEBOOKS_ENABLED = False
+    mock_settings.EBIBLIOTECA_ENABLED = False
+    mock_settings.EPUBGRATIS_ENABLED = False
+    mock_settings.DIVXTOTAL_ENABLED = False
+    mock_settings.ELITETORRENT_ENABLED = False
     mock_settings.RATE_LIMIT_PER_SECOND = 100.0
     mock_settings.MAX_RETRIES = 1
     mock_settings.REQUEST_TIMEOUT = 5
@@ -59,11 +68,24 @@ def _enable_minimal_providers(mock_settings):
     mock_settings.DOWNLOAD_TOKEN_TTL = 3600
 
 
+
+def _init_providers_sync(*args, **kwargs):
+    """Call async _init_providers from sync or async pytest contexts."""
+    coro = torznab._init_providers(*args, **kwargs)
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
 class TestDownloadSecurity:
     def test_download_without_apikey_returns_401(self, test_app, mock_http_client):
         with patch("app.api.torznab.settings") as mock_settings:
             _enable_minimal_providers(mock_settings)
-            torznab._init_providers(None, mock_http_client)
+            _init_providers_sync(None, mock_http_client)
             client = TestClient(test_app)
             response = client.get("/api/download?provider=mejortorrent&id=http://x.torrent")
             assert response.status_code == 200
@@ -72,7 +94,7 @@ class TestDownloadSecurity:
     def test_download_content_without_token_returns_401(self, test_app, mock_http_client):
         with patch("app.api.torznab.settings") as mock_settings:
             _enable_minimal_providers(mock_settings)
-            torznab._init_providers(None, mock_http_client)
+            _init_providers_sync(None, mock_http_client)
             client = TestClient(test_app)
             response = client.get("/api/download-content?provider=espaebook&id=123&fmt=epub")
             assert response.status_code == 200
@@ -81,7 +103,7 @@ class TestDownloadSecurity:
     def test_download_content_with_valid_token(self, test_app, mock_http_client):
         with patch("app.api.torznab.settings") as mock_settings:
             _enable_minimal_providers(mock_settings)
-            torznab._init_providers(None, mock_http_client)
+            _init_providers_sync(None, mock_http_client)
 
             espaebook = torznab.registry.get("espaebook")
             async def _get_download_url(*args, **kwargs):

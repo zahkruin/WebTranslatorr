@@ -515,7 +515,7 @@ class TestTranslationPipeline:
         mock_cache = AsyncMock(spec=TranslationCache)
         mock_cache.get.return_value = None
         mock_wikidata = AsyncMock(spec=WikidataClient)
-        mock_wikidata.get_spanish_title.return_value = "Título español"
+        mock_wikidata.get_translated_title.return_value = "Título español"
 
         pipeline._cache = mock_cache
         pipeline._wikidata = mock_wikidata
@@ -526,7 +526,7 @@ class TestTranslationPipeline:
         assert result.source == "wikidata"
         assert result.confidence == 0.95
         mock_cache.get.assert_called()
-        mock_wikidata.get_spanish_title.assert_called()
+        mock_wikidata.get_translated_title.assert_called()
         mock_cache.set.assert_called_once()
 
     @pytest.mark.asyncio
@@ -537,9 +537,9 @@ class TestTranslationPipeline:
         mock_cache = AsyncMock(spec=TranslationCache)
         mock_cache.get.return_value = None
         mock_wikidata = AsyncMock(spec=WikidataClient)
-        mock_wikidata.get_spanish_title.return_value = None
+        mock_wikidata.get_translated_title.return_value = None
         mock_google = AsyncMock(spec=GoogleBooksClient)
-        mock_google.get_spanish_title.return_value = (
+        mock_google.get_translated_title.return_value = (
             "El nombre del viento: A Novel (Spanish Edition)"
         )
 
@@ -555,8 +555,8 @@ class TestTranslationPipeline:
         assert result.source == "google_books"
         assert result.confidence == 0.70
         mock_cache.get.assert_called()
-        mock_wikidata.get_spanish_title.assert_called()
-        mock_google.get_spanish_title.assert_called()
+        mock_wikidata.get_translated_title.assert_called()
+        mock_google.get_translated_title.assert_called()
         mock_cache.set.assert_called_once()
 
     @pytest.mark.asyncio
@@ -567,9 +567,9 @@ class TestTranslationPipeline:
         mock_cache = AsyncMock(spec=TranslationCache)
         mock_cache.get.return_value = None
         mock_wikidata = AsyncMock(spec=WikidataClient)
-        mock_wikidata.get_spanish_title.return_value = None
+        mock_wikidata.get_translated_title.return_value = None
         mock_google = AsyncMock(spec=GoogleBooksClient)
-        mock_google.get_spanish_title.return_value = None
+        mock_google.get_translated_title.return_value = None
 
         pipeline._cache = mock_cache
         pipeline._wikidata = mock_wikidata
@@ -578,8 +578,8 @@ class TestTranslationPipeline:
         result = await pipeline.translate("Unknown Book")
         assert result is None
         mock_cache.get.assert_called()
-        mock_wikidata.get_spanish_title.assert_called()
-        mock_google.get_spanish_title.assert_called()
+        mock_wikidata.get_translated_title.assert_called()
+        mock_google.get_translated_title.assert_called()
 
     @pytest.mark.asyncio
     async def test_pipeline_no_google_api_key(self):
@@ -589,7 +589,7 @@ class TestTranslationPipeline:
         mock_cache = AsyncMock(spec=TranslationCache)
         mock_cache.get.return_value = None
         mock_wikidata = AsyncMock(spec=WikidataClient)
-        mock_wikidata.get_spanish_title.return_value = None
+        mock_wikidata.get_translated_title.return_value = None
 
         pipeline._cache = mock_cache
         pipeline._wikidata = mock_wikidata
@@ -616,7 +616,7 @@ class TestTranslationPipeline:
         mock_cache2 = AsyncMock(spec=TranslationCache)
         mock_cache2.get.return_value = None
         mock_wikidata2 = AsyncMock(spec=WikidataClient)
-        mock_wikidata2.get_spanish_title.return_value = "Título"
+        mock_wikidata2.get_translated_title.return_value = "Título"
         pipeline2._cache = mock_cache2
         pipeline2._wikidata = mock_wikidata2
         result2 = await pipeline2.translate("Test")
@@ -627,9 +627,9 @@ class TestTranslationPipeline:
         mock_cache3 = AsyncMock(spec=TranslationCache)
         mock_cache3.get.return_value = None
         mock_wikidata3 = AsyncMock(spec=WikidataClient)
-        mock_wikidata3.get_spanish_title.return_value = None
+        mock_wikidata3.get_translated_title.return_value = None
         mock_google3 = AsyncMock(spec=GoogleBooksClient)
-        mock_google3.get_spanish_title.return_value = "Título"
+        mock_google3.get_translated_title.return_value = "Título"
         pipeline3._cache = mock_cache3
         pipeline3._wikidata = mock_wikidata3
         pipeline3._google_books = mock_google3
@@ -674,8 +674,12 @@ class TestTranslationPipelineIntegration:
         )
 
         # The default is False, so this should return None
-        pipeline = await get_translation_pipeline()
-        assert pipeline is None
+        try:
+            pipeline = await get_translation_pipeline()
+            assert pipeline is None
+        finally:
+            await shutdown_translation_pipeline()
+            tp_module._translation_pipeline = None
 
     @pytest.mark.asyncio
     async def test_pipeline_enabled_returns_instance(self, monkeypatch):
