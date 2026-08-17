@@ -8,11 +8,11 @@ SOURCE_FILES=$(echo "$CHANGED_FILES" | grep -E '\.(py|ts|js|go|rs|java|cs|rb|php
 
 if [ -n "$SOURCE_FILES" ]; then
     echo ""
-    echo "⚠️  Código fuente modificado. La documentación agéntica (.kilo/) puede necesitar actualización."
+    echo "⚠️  Código fuente modificado. La documentación agéntica (.cursor/) puede necesitar actualización."
     echo "   Archivos modificados:"
     echo "$SOURCE_FILES" | while read -r f; do echo "     - $f"; done
     echo ""
     echo "   Ejecuta: python scripts/validate_docs.py --strict"
-    echo "   Y actualiza los documentos en .kilo/ según corresponda."
+    echo "   Y actualiza los documentos en .cursor/ según corresponda."
     echo ""
 fi

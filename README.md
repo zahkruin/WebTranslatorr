@@ -132,8 +132,8 @@ WebTranslatorr/
 │   ├── scraping/      # HTTP client con rate-limiting
 │   └── torznab/       # Generación XML
 ├── tests/             # Tests pytest
-├── .gemini/           # Documentación agéntica
-└── docs/              # Documentación técnica
+├── .cursor/             # Documentación agéntica (única fuente de verdad)
+└── scripts/           # Scripts de validación y mantenimiento
 ```
 
 ## Tests

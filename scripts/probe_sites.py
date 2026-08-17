@@ -51,7 +51,7 @@ UPDATABLE_FIELDS = [
 
 TARGET_CONTENT_TYPES = {"books", "mixed"}
 
-DEFAULT_CSV_PATH = str(_PROJECT_ROOT / ".kilo" / "plans" / "site-catalog.csv")
+DEFAULT_CSV_PATH = str(_PROJECT_ROOT / ".cursor" / "plans" / "site-catalog.csv")
 
 LOG_DIR = _PROJECT_ROOT / "scripts"
 

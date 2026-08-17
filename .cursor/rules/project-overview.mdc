@@ -1,0 +1,47 @@
+---
+description: Instrucciones globales y punto de entrada de la documentación agéntica del proyecto.
+globs: "**/*"
+alwaysApply: true
+---
+
+# WebTranslatorr — Reglas globales del proyecto
+
+## Punto de entrada obligatorio
+
+Antes de tocar cualquier cosa, lee en este orden:
+
+1. `.cursor/README.md` — estructura completa de la documentación agéntica
+2. `AGENTS.md` (raíz) — visión general, stack, convenciones, anti-patrones
+3. `.cursor/INDEX.md` — mapa de casos de uso → documentación específica
+
+Toda la documentación agéntica vive bajo `.cursor/` (fuente única de verdad).
+No existen otros repositorios de documentación.
+
+## Mantenimiento obligatorio de documentación
+
+- Todo cambio en `app/**`, `config.py`, `main.py`, `Dockerfile`, `docker-compose*.yml`
+  debe ir acompañado de la actualización de los documentos en `.cursor/`.
+- Identifica qué documentos actualizar con `.cursor/doc-mapping.json`.
+- Antes de commit, ejecuta: `python scripts/validate_docs.py --strict`.
+
+## Provider implementations
+
+- Herencia: `BaseProvider` (ABC).
+- Métodos a implementar: `search()`, `get_download_url()`, `get_capabilities()`.
+- Devolver siempre `SearchResult` (nunca dict).
+- Usar `self.http_client` para requests (rate-limiting integrado).
+- NUNCA propagar excepciones: capturar, loguear y devolver `[]` o `None`.
+
+## Categorías Newznab
+
+- Libros: 7000, 7020, 8000, 8010
+- Películas: 2000, 2030, 2040, 2045
+- TV: 5000, 5030, 5040, 5045
+
+## Anti-patrones (nunca)
+
+- NUNCA seguir enlaces de `profitablecpmgate.com` (trampa publicitaria de Ebookelo).
+- No hardcodear URLs de providers: usar configuración o `DomainResolver`.
+- No hacer requests síncronos: todo async/await.
+- No parsear XML manualmente: usar `ElementTree`.
+- No propagar excepciones desde providers.

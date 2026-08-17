@@ -1,0 +1,41 @@
+---
+description: Reglas específicas para la implementación de providers (scraping, categorías, errores).
+globs: "app/providers/**/*.py"
+alwaysApply: false
+---
+
+# Reglas de providers — WebTranslatorr
+
+## Contrato BaseProvider
+
+- Heredar de `BaseProvider` (ABC).
+- Implementar: `search()`, `get_download_url()`, `get_capabilities()`.
+- Opcional: `browse()` para soportar modo RSS/browse de Readarr.
+
+## Resultados
+
+- Devolver `SearchResult` (dataclass), NUNCA dicts.
+- `categories` default: `[7000, 7020, 8000, 8010]` (libros) para máxima compatibilidad.
+- No interactuar con el formato Torznab directamente (eso lo hace `app/torznab/`).
+
+## HTTP
+
+- Usar `self.http_client` para todos los requests (rate-limiting, retry y cloudscraper integrados).
+- URLs de dominio: usar `self.base_url` (resuelto dinámicamente vía `DomainResolver`), no hardcodear.
+
+## Gestión de errores
+
+- Capturar TODAS las excepciones, loguear con `self.logger` y devolver `[]` o `None`.
+- NUNCA propagar excepciones hacia la API.
+- Para providers WordPress, usar `WpApiClient` (`app/scraping/wp_api_client.py`).
+
+## Documentación asociada
+
+- Estrategia de scraping por provider: `.cursor/context/06-provider-strategies/{provider_id}.md`.
+- Contrato y ciclo de vida: `.cursor/context/05-providers-base.md`.
+- Guía para añadir providers: `.cursor/context/17-adding-providers.md`.
+
+## Trampas conocidas
+
+- `profitablecpmgate.com` es una trampa publicitaria de Ebookelo; NUNCA seguir esos enlaces.
+- Varios providers WordPress requieren parámetros adicionales (`per_page`, `_fields`) para paginar.

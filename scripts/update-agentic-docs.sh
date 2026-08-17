@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # update-agentic-docs.sh — Analiza cambios en código fuente y sugiere o ejecuta
-# la actualización de la documentación agéntica en .kilo/
+# la actualización de la documentación agéntica en .cursor/
 #
 # Modos:
 #   --check     Solo reporta qué docs necesitan actualización (no modifica nada)
@@ -15,7 +15,7 @@ ROOT="$(dirname "$SCRIPT_DIR")"
 BASE_REF="${BASE_REF:-HEAD~1}"
 
 MODE="${1:-}"
-KILO_DIR="$ROOT/.kilo"
+CURSOR_DIR="$ROOT/.cursor"
 
 # Colores
 RED='\033[0;31m'
@@ -55,7 +55,7 @@ if [ -n "$AFFECTED_DOCS" ]; then
     echo "Documents that may need updating:"
     echo "$AFFECTED_DOCS" | while read -r doc; do
         if [ -n "$doc" ]; then
-            echo "  - $KILO_DIR/$doc"
+            echo "  - $CURSOR_DIR/$doc"
         fi
     done
 fi

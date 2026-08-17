@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Set
 
 ROOT = Path(__file__).resolve().parent.parent
-DOC_DIR = ROOT / ".kilo"
+DOC_DIR = ROOT / ".cursor"
 CONTEXT_DIR = DOC_DIR / "context"
 STRATEGIES_DIR = CONTEXT_DIR / "06-provider-strategies"
 

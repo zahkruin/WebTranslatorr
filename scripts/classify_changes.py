@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 ROOT = Path(__file__).resolve().parent.parent
-MAPPING_FILE = ROOT / ".kilo" / "doc-mapping.json"
+MAPPING_FILE = ROOT / ".cursor" / "doc-mapping.json"
 
 
 class ChangeSeverity:
@@ -108,7 +108,7 @@ def classify_changes(files: list[str], base: str = "HEAD~1") -> dict:
     for file_path in files:
         if not file_path.endswith(('.py', '.yml', '.yaml', '.json', 'Dockerfile')):
             continue
-        if file_path.startswith(('.kilo/', '.gemini/', 'docs/', '.plans/', 'plans/')):
+        if file_path.startswith(('.cursor/',)):
             continue
 
         diff = get_diff_content(file_path, base)

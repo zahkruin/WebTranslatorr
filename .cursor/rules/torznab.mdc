@@ -1,0 +1,28 @@
+---
+description: Reglas de protocolo Torznab/Newznab y mapeo XML.
+globs: "app/torznab/**/*.py,app/api/**/*.py"
+alwaysApply: false
+---
+
+# Reglas de protocolo Torznab — WebTranslatorr
+
+## Serialización XML
+
+- Serializar `SearchResult` → XML Torznab/Newznab (RSS 2.0 + namespaces).
+- Usar `xml.etree.ElementTree` (nunca concatenación manual de strings).
+- Generar capabilities XML correctamente (server title/URL según contexto multi-indexer).
+
+## Endpoints
+
+- `GET /api?t=caps` — capabilities del proxy (sin API key, compatible Jackett/Prowlarr).
+- `GET /api?t=search|book|movie|tvsearch` — búsquedas.
+- `GET /api/{provider_id}?t=...` — búsqueda en un provider específico (multi-indexer).
+- `GET /api/download?provider=...&id=...` — proxy de descarga.
+- `GET /health`, `/api/domains`, `/api/providers` — salud, dominios, discovery.
+
+## Consideraciones críticas
+
+- `EXTERNAL_URL` debe usarse en URLs de respuestas XML (no `localhost` hardcodeado).
+- Orden de routers FastAPI: rutas estáticas (`/api/domains`, `/api/providers`) antes de la dinámica `/api/{provider_id}`.
+- Headers de error Torznab: `X-Torznab-Error-Code`, `X-Torznab-Error-Description`.
+- Documentación detallada: `.cursor/context/08-torznab-protocol.md` y `.cursor/context/13-api-endpoints.md`.
